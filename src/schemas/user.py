@@ -33,6 +33,14 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
+class UserUpdate(BaseModel):
+    """Schema for updating own profile."""
+    full_name: str | None = Field(None, max_length=255)
+    is_admin: bool | None = None
+    current_password: str | None = None
+    new_password: str | None = Field(None, min_length=8, max_length=100)
+
+
 class Token(BaseModel):
     """Schema for authentication token response."""
 

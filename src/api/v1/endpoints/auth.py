@@ -13,7 +13,7 @@ from src.core.security import (
 )
 from src.core.config import settings
 from src.models.user import User
-from src.schemas.user import UserCreate, UserLogin, UserResponse, Token
+from src.schemas.user import UserCreate, UserLogin, UserResponse, UserUpdate, Token
 from src.api.v1.dependencies import get_current_user as get_current_user_dep
 
 router = APIRouter()
@@ -90,6 +90,39 @@ async def login(credentials: UserLogin, db: AsyncSession = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 async def get_current_user(user: User = Depends(get_current_user_dep)):
     """Get current authenticated user."""
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        is_active=user.is_active,
+        is_verified=user.is_verified,
+        is_admin=user.is_admin,
+        created_at=user.created_at.isoformat(),
+    )
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_current_user(
+    body: UserUpdate,
+    user: User = Depends(get_current_user_dep),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update own profile (name and/or password)."""
+    if body.new_password:
+        if not body.current_password:
+            raise HTTPException(status_code=400, detail="current_password is required to set a new password")
+        if not verify_password(body.current_password, user.hashed_password):
+            raise HTTPException(status_code=400, detail="Current password is incorrect")
+        user.hashed_password = get_password_hash(body.new_password)
+
+    if body.full_name is not None:
+        user.full_name = body.full_name
+
+    if body.is_admin is not None:
+        user.is_admin = body.is_admin
+
+    await db.commit()
+    await db.refresh(user)
     return UserResponse(
         id=user.id,
         email=user.email,

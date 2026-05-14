@@ -20,9 +20,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
 import { QuestionBankTab } from './question-bank-tab';
+import { EnglishTopicsTab } from './english-topics-tab';
+import { CodeTopicsTab } from './code-topics-tab';
 
 // Group definitions — order matters for display
 const CONFIG_GROUPS: { label: string; keys: string[] }[] = [
@@ -314,22 +314,14 @@ function UsersTab() {
 }
 
 export default function AdminPage() {
-  const router = useRouter();
   const { user, isLoading: authLoading } = useAuthStore();
   const qc = useQueryClient();
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
-  // Guard: redirect non-admins
-  useEffect(() => {
-    if (!authLoading && user && !user.is_admin) {
-      router.replace('/dashboard');
-    }
-  }, [user, authLoading, router]);
-
   const { data: configs, isLoading: configLoading } = useQuery<ConfigEntry[]>({
     queryKey: ['admin-config'],
     queryFn: () => adminApi.getConfig(),
-    enabled: !!user?.is_admin,
+    enabled: !!user,
   });
 
   const updateMutation = useMutation({
@@ -363,7 +355,6 @@ export default function AdminPage() {
   };
 
   if (authLoading || !user) return null;
-  if (!user.is_admin) return null;
 
   const configMap = new Map(configs?.map((c) => [c.key, c]) ?? []);
 
@@ -389,6 +380,8 @@ export default function AdminPage() {
         <TabsList>
           <TabsTrigger value="config">Agent Config</TabsTrigger>
           <TabsTrigger value="questions">Question Bank</TabsTrigger>
+          <TabsTrigger value="english">English Topics</TabsTrigger>
+          <TabsTrigger value="code">Code Topics</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
         </TabsList>
 
@@ -415,6 +408,14 @@ export default function AdminPage() {
 
         <TabsContent value="questions" className="mt-4">
           <QuestionBankTab />
+        </TabsContent>
+
+        <TabsContent value="english" className="mt-4">
+          <EnglishTopicsTab />
+        </TabsContent>
+
+        <TabsContent value="code" className="mt-4">
+          <CodeTopicsTab />
         </TabsContent>
 
         <TabsContent value="users" className="mt-4">

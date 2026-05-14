@@ -120,14 +120,16 @@ async def _extract_text_from_url(url: str, instructions: str | None = None, log_
         try:
             page = await browser.new_page()
             await _log(log_cb, f"→ Navigating to {url}")
-            await page.goto(url, wait_until="networkidle", timeout=30_000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+            # Give JS-heavy SPAs (LeetCode, etc.) time to render content
+            await page.wait_for_timeout(3_000)
             await _log(log_cb, "✓ Page loaded (JavaScript executed)")
 
             if not click_targets:
                 # Simple mode: scroll and extract
                 await _log(log_cb, "→ Scrolling to reveal lazy content…")
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await page.wait_for_timeout(1000)
+                await page.wait_for_timeout(1500)
                 text = await page.evaluate("() => document.body.innerText")
                 await _log(log_cb, f"✓ Extracted {len(text):,} characters of page text")
                 return text[:50_000]
@@ -146,9 +148,10 @@ async def _extract_text_from_url(url: str, instructions: str | None = None, log_
                     await locator.first.click()
 
                     try:
-                        await page.wait_for_load_state("networkidle", timeout=4_000)
+                        await page.wait_for_load_state("domcontentloaded", timeout=4_000)
                     except Exception:
-                        await page.wait_for_timeout(800)
+                        pass
+                    await page.wait_for_timeout(1_500)
 
                     section_text = await page.evaluate("() => document.body.innerText")
                     texts.append(section_text)

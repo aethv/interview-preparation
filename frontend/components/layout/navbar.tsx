@@ -12,6 +12,7 @@ import {
   Github,
   Linkedin,
   ShieldCheck,
+  BookOpen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,7 +29,9 @@ import { cn } from '@/lib/utils';
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, exact: true },
   { name: 'Interviews', href: '/dashboard/interviews', icon: MessageSquare, exact: false },
+  { name: 'Practice', href: '/dashboard/practice', icon: BookOpen, exact: false },
   { name: 'Resumes', href: '/resumes', icon: FileText, exact: false },
+  { name: 'Admin', href: '/dashboard/admin', icon: ShieldCheck, exact: false },
 ];
 
 export function Navbar() {
@@ -126,20 +129,6 @@ export function Navbar() {
               </Link>
             );
           })}
-          {user?.is_admin && (
-            <Link
-              href="/dashboard/admin"
-              className={cn(
-                'flex items-center space-x-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                pathname?.startsWith('/dashboard/admin')
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-              )}
-            >
-              <ShieldCheck className="h-4 w-4" />
-              <span>Admin</span>
-            </Link>
-          )}
         </nav>
 
         {/* User Menu */}
@@ -155,7 +144,7 @@ export function Navbar() {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push('/dashboard/profile')} className="cursor-pointer">
               <User className="mr-2 h-4 w-4" />
               Profile
             </DropdownMenuItem>
