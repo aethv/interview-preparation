@@ -32,15 +32,15 @@ import {
 type ProgressJob = { label: string; status: 'pending' | 'running' | 'done' | 'error' };
 
 const URL_JOBS: ProgressJob[] = [
-  { label: 'Launching headless browser (Playwright)',    status: 'pending' },
+  { label: 'Launching headless browser (Playwright)', status: 'pending' },
   { label: 'Navigating to page & executing JavaScript', status: 'pending' },
-  { label: 'Extracting page text',                      status: 'pending' },
-  { label: 'Extracting problems with GPT',              status: 'pending' },
+  { label: 'Extracting page text', status: 'pending' },
+  { label: 'Extracting problems with GPT', status: 'pending' },
 ];
 
 const FILE_JOBS: ProgressJob[] = [
-  { label: 'Uploading document',         status: 'pending' },
-  { label: 'Parsing document text',      status: 'pending' },
+  { label: 'Uploading document', status: 'pending' },
+  { label: 'Parsing document text', status: 'pending' },
   { label: 'Extracting problems with GPT', status: 'pending' },
 ];
 
@@ -68,7 +68,7 @@ function useProgressSim(active: boolean, jobs: ProgressJob[]) {
     };
     advance();
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
   const finish = (error?: boolean) => {
@@ -83,9 +83,9 @@ function useProgressSim(active: boolean, jobs: ProgressJob[]) {
 }
 
 function JobStatusIcon({ status }: { status: ProgressJob['status'] }) {
-  if (status === 'done')    return <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />;
+  if (status === 'done') return <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />;
   if (status === 'running') return <Loader2 className="h-4 w-4 animate-spin text-blue-500 shrink-0" />;
-  if (status === 'error')   return <AlertCircle className="h-4 w-4 text-destructive shrink-0" />;
+  if (status === 'error') return <AlertCircle className="h-4 w-4 text-destructive shrink-0" />;
   return <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 shrink-0" />;
 }
 
@@ -637,472 +637,471 @@ function CodeImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className={`${step === 'preview' ? 'max-w-[92vw]' : step === 'discovering' ? 'max-w-[85vw]' : 'max-w-4xl'} max-h-[95vh] flex flex-col transition-all duration-300`}>
+      <DialogContent className={`max-w-4xl max-h-[95vh] flex flex-col transition-all duration-300`}>
         <DialogHeader>
           <DialogTitle>Import Code Topics</DialogTitle>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4">
 
-        {step === 'input' && (
-          <div className="space-y-4">
-            <div className="flex gap-2">
-              <Button size="sm" variant={mode === 'url' ? 'default' : 'outline'} onClick={() => setMode('url')}>
-                <Link2 className="h-3 w-3 mr-1" /> URL
-              </Button>
-              <Button size="sm" variant={mode === 'file' ? 'default' : 'outline'} onClick={() => setMode('file')}>
-                <Upload className="h-3 w-3 mr-1" /> File
-              </Button>
-            </div>
-
-            {mode === 'url' ? (
-              <div className="space-y-2">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Page URL to crawl</label>
-                  <Input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://leetcode.com/problems/two-sum/…" />
-                </div>
-                {/* Cookie injection for sites with bot protection */}
-                <div>
-                  <button
-                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                    onClick={() => setShowCookies(v => !v)}
-                  >
-                    <span>{showCookies ? '▾' : '▸'}</span>
-                    Paste cookies to bypass login / bot protection
-                    {cookies && <span className="ml-1 text-green-600">✓</span>}
-                  </button>
-                  {showCookies && (
-                    <div className="mt-1.5 space-y-1">
-                      <Textarea
-                        value={cookies}
-                        onChange={e => setCookies(e.target.value)}
-                        rows={3}
-                        className="text-xs font-mono"
-                        placeholder={'Paste cookies here — Netscape format, JSON array, or name=value; name2=value2\n\nGet from: DevTools → Application → Cookies → right-click → Copy all'}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Cookies are sent directly to Playwright and never stored.
-                      </p>
-                    </div>
-                  )}
-                </div>
+          {step === 'input' && (
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <Button size="sm" variant={mode === 'url' ? 'default' : 'outline'} onClick={() => setMode('url')}>
+                  <Link2 className="h-3 w-3 mr-1" /> URL
+                </Button>
+                <Button size="sm" variant={mode === 'file' ? 'default' : 'outline'} onClick={() => setMode('file')}>
+                  <Upload className="h-3 w-3 mr-1" /> File
+                </Button>
               </div>
-            ) : (
-              <div className="space-y-1">
-                <label className="text-xs font-medium">Upload document (PDF, DOCX, TXT)</label>
-                <Input type="file" accept=".pdf,.docx,.txt,.md" onChange={e => setFile(e.target.files?.[0] ?? null)} />
-              </div>
-            )}
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium">
-                Extraction instructions <span className="text-muted-foreground font-normal">(optional)</span>
-              </label>
-              <Textarea
-                value={instructions}
-                onChange={e => setInstructions(e.target.value)}
-                rows={4}
-                className="text-xs font-mono"
-                placeholder={"Examples:\n• Extract as a single problem\n• Fill discussion_hints with 3-4 clarifying questions\n• Set difficulty to Senior for this LeetCode Hard"}
-              />
-            </div>
-
-            <DialogFooter>
-              <Button variant="outline" onClick={handleClose}>Cancel</Button>
               {mode === 'url' ? (
-                <Button onClick={() => discover()} disabled={!url}>
-                  <Search className="h-3.5 w-3.5 mr-1.5" /> Discover
-                </Button>
-              ) : (
-                <Button onClick={extract} disabled={!file}>
-                  Extract Problems
-                </Button>
-              )}
-            </DialogFooter>
-          </div>
-        )}
-
-        {step === 'discovering' && (
-          <div className="flex flex-col gap-3">
-            {/* URL + instructions recap */}
-            <div className="rounded-md border bg-muted/30 px-3 py-2 space-y-0.5">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-xs text-muted-foreground shrink-0">URL</span>
-                <span className="text-xs font-mono truncate text-foreground">{url}</span>
-              </div>
-              {instructions && (
-                <div className="flex items-start gap-2 min-w-0">
-                  <span className="text-xs text-muted-foreground shrink-0 mt-px">Instructions</span>
-                  <span className="text-xs text-muted-foreground line-clamp-2">{instructions}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-4 min-h-[460px]">
-              {/* Left: log */}
-              <div className="flex flex-col gap-2 w-64 shrink-0">
-                <div className="flex items-center gap-2">
-                  {needsHuman
-                    ? <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
-                    : <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />}
-                  <p className="text-sm font-medium">{needsHuman ? 'Waiting for instruction…' : 'Browsing page…'}</p>
-                </div>
-                <div className="rounded-md border bg-muted/40 overflow-hidden flex-1 flex flex-col">
-                  <div className="flex items-center gap-2 px-3 py-1.5 border-b bg-muted/60 shrink-0">
-                    <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                    <span className="text-xs font-medium text-muted-foreground">Live log</span>
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Page URL to crawl</label>
+                    <Input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://leetcode.com/problems/two-sum/…" />
                   </div>
-                  <div className="flex-1 overflow-y-auto p-3 space-y-0.5 font-mono text-xs">
-                    {logs.length === 0 && <p className="text-muted-foreground/60 italic">Starting…</p>}
-                    {logs.map((line, i) => (
-                      <div key={i} className={`leading-relaxed ${line.startsWith('✗') ? 'text-destructive' : line.startsWith('✓') ? 'text-green-600 dark:text-green-400' : 'text-foreground'}`}>
-                        {line}
+                  {/* Cookie injection for sites with bot protection */}
+                  <div>
+                    <button
+                      className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                      onClick={() => setShowCookies(v => !v)}
+                    >
+                      <span>{showCookies ? '▾' : '▸'}</span>
+                      Paste cookies to bypass login / bot protection
+                      {cookies && <span className="ml-1 text-green-600">✓</span>}
+                    </button>
+                    {showCookies && (
+                      <div className="mt-1.5 space-y-1">
+                        <Textarea
+                          value={cookies}
+                          onChange={e => setCookies(e.target.value)}
+                          rows={3}
+                          className="text-xs font-mono"
+                          placeholder={'Paste cookies here — Netscape format, JSON array, or name=value; name2=value2\n\nGet from: DevTools → Application → Cookies → right-click → Copy all'}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Cookies are sent directly to Playwright and never stored.
+                        </p>
                       </div>
-                    ))}
-                    <div ref={logsEndRef} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Right: live screenshot */}
-              <div className="flex-1 flex flex-col gap-2 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <div className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
-                  <span className="text-xs font-medium text-muted-foreground">Live browser view</span>
-                </div>
-                <div className="rounded-md border overflow-hidden bg-muted/30 flex-1 flex items-center justify-center">
-                  {liveScreenshot ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={`data:image/jpeg;base64,${liveScreenshot}`} alt="Live browser" className="w-full h-full object-contain" />
-                  ) : (
-                    <div className="flex flex-col items-center gap-2 text-muted-foreground/50 p-4">
-                      <Loader2 className="h-6 w-6 animate-spin" />
-                      <p className="text-xs text-center">Screenshot appears after first action</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Needs-human panel — shown inline below, doesn't hide the view above */}
-            {needsHuman && (
-              <div className="rounded-md border border-yellow-400/50 bg-yellow-50 dark:bg-yellow-950/20 p-3 space-y-3">
-                <div>
-                  <p className="text-sm font-semibold text-yellow-700 dark:text-yellow-400">Browser needs help</p>
-                  <p className="text-xs text-muted-foreground">{needsHuman.message}</p>
-                </div>
-                <div className="flex gap-2 items-start">
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <Sparkles className="h-3 w-3 text-purple-500 shrink-0" />
-                      <label className="text-xs font-medium">Instruction — edit if needed, then continue</label>
-                    </div>
-                    <Textarea
-                      value={humanInstruction}
-                      onChange={e => setHumanInstruction(e.target.value)}
-                      rows={2}
-                      className="text-xs font-mono"
-                      placeholder={needsHuman.gpt_suggestion}
-                    />
-                    {!humanInstruction && (
-                      <button className="text-xs text-purple-600 hover:underline" onClick={() => setHumanInstruction(needsHuman.gpt_suggestion)}>
-                        Use GPT suggestion
-                      </button>
                     )}
                   </div>
-                  <div className="flex flex-col gap-2 pt-5 shrink-0">
-                    <Button size="sm" onClick={sendFeedback}>Continue</Button>
-                    <Button size="sm" variant="outline" onClick={() => { setNeedsHuman(null); setStep('input'); }}>Cancel</Button>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Upload document (PDF, DOCX, TXT)</label>
+                  <Input type="file" accept=".pdf,.docx,.txt,.md" onChange={e => setFile(e.target.files?.[0] ?? null)} />
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium">
+                  Extraction instructions <span className="text-muted-foreground font-normal">(optional)</span>
+                </label>
+                <Textarea
+                  value={instructions}
+                  onChange={e => setInstructions(e.target.value)}
+                  rows={4}
+                  className="text-xs font-mono"
+                  placeholder={"Examples:\n• Extract as a single problem\n• Fill discussion_hints with 3-4 clarifying questions\n• Set difficulty to Senior for this LeetCode Hard"}
+                />
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={handleClose}>Cancel</Button>
+                {mode === 'url' ? (
+                  <Button onClick={() => discover()} disabled={!url}>
+                    <Search className="h-3.5 w-3.5 mr-1.5" /> Discover
+                  </Button>
+                ) : (
+                  <Button onClick={extract} disabled={!file}>
+                    Extract Problems
+                  </Button>
+                )}
+              </DialogFooter>
+            </div>
+          )}
+
+          {step === 'discovering' && (
+            <div className="flex flex-col gap-3">
+              {/* URL + instructions recap */}
+              <div className="rounded-md border bg-muted/30 px-3 py-2 space-y-0.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs text-muted-foreground shrink-0">URL</span>
+                  <span className="text-xs font-mono truncate text-foreground">{url}</span>
+                </div>
+                {instructions && (
+                  <div className="flex items-start gap-2 min-w-0">
+                    <span className="text-xs text-muted-foreground shrink-0 mt-px">Instructions</span>
+                    <span className="text-xs text-muted-foreground line-clamp-2">{instructions}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-4 min-h-[460px]">
+                {/* Left: log */}
+                <div className="flex flex-col gap-2 w-64 shrink-0">
+                  <div className="flex items-center gap-2">
+                    {needsHuman
+                      ? <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
+                      : <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />}
+                    <p className="text-sm font-medium">{needsHuman ? 'Waiting for instruction…' : 'Browsing page…'}</p>
+                  </div>
+                  <div className="rounded-md border bg-muted/40 overflow-hidden flex-1 flex flex-col">
+                    <div className="flex items-center gap-2 px-3 py-1.5 border-b bg-muted/60 shrink-0">
+                      <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                      <span className="text-xs font-medium text-muted-foreground">Live log</span>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-3 space-y-0.5 font-mono text-xs">
+                      {logs.length === 0 && <p className="text-muted-foreground/60 italic">Starting…</p>}
+                      {logs.map((line, i) => (
+                        <div key={i} className={`leading-relaxed ${line.startsWith('✗') ? 'text-destructive' : line.startsWith('✓') ? 'text-green-600 dark:text-green-400' : 'text-foreground'}`}>
+                          {line}
+                        </div>
+                      ))}
+                      <div ref={logsEndRef} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: live screenshot */}
+                <div className="flex-1 flex flex-col gap-2 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                    <span className="text-xs font-medium text-muted-foreground">Live browser view</span>
+                  </div>
+                  <div className="rounded-md border overflow-hidden bg-muted/30 flex-1 flex items-center justify-center">
+                    {liveScreenshot ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={`data:image/jpeg;base64,${liveScreenshot}`} alt="Live browser" className="w-full h-full object-contain" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 text-muted-foreground/50 p-4">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                        <p className="text-xs text-center">Screenshot appears after first action</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
-            )}
-          </div>
-        )}
 
-        {step === 'confirm_discovery' && discovery && (
-          <div className="space-y-4">
-            <div className="rounded-md border bg-muted/30 p-3 space-y-1">
-              <p className="text-sm font-semibold">{discovery.page_title}</p>
-              <p className="text-xs text-muted-foreground">{discovery.description}</p>
-              {discovery.page_type === 'list' && (
-                <p className="text-xs text-primary font-medium">
-                  {selectedItems.size} / {discovery.items.length} problem{discovery.items.length !== 1 ? 's' : ''} selected
-                </p>
+              {/* Needs-human panel — shown inline below, doesn't hide the view above */}
+              {needsHuman && (
+                <div className="rounded-md border border-yellow-400/50 bg-yellow-50 dark:bg-yellow-950/20 p-3 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold text-yellow-700 dark:text-yellow-400">Browser needs help</p>
+                    <p className="text-xs text-muted-foreground">{needsHuman.message}</p>
+                  </div>
+                  <div className="flex gap-2 items-start">
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <Sparkles className="h-3 w-3 text-purple-500 shrink-0" />
+                        <label className="text-xs font-medium">Instruction — edit if needed, then continue</label>
+                      </div>
+                      <Textarea
+                        value={humanInstruction}
+                        onChange={e => setHumanInstruction(e.target.value)}
+                        rows={2}
+                        className="text-xs font-mono"
+                        placeholder={needsHuman.gpt_suggestion}
+                      />
+                      {!humanInstruction && (
+                        <button className="text-xs text-purple-600 hover:underline" onClick={() => setHumanInstruction(needsHuman.gpt_suggestion)}>
+                          Use GPT suggestion
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2 pt-5 shrink-0">
+                      <Button size="sm" onClick={sendFeedback}>Continue</Button>
+                      <Button size="sm" variant="outline" onClick={() => { setNeedsHuman(null); setStep('input'); }}>Cancel</Button>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
+          )}
 
-            {discovery.page_type === 'list' && discovery.items.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium">Select problems to extract</label>
-                  <Button size="sm" variant="ghost" className="h-6 text-xs"
-                    onClick={() => setSelectedItems(
-                      selectedItems.size === discovery.items.length
-                        ? new Set()
-                        : new Set(discovery.items.map((_, i) => i))
-                    )}>
-                    {selectedItems.size === discovery.items.length ? 'Deselect all' : 'Select all'}
-                  </Button>
-                </div>
-                <div className="border rounded-md divide-y max-h-64 overflow-y-auto">
-                  {discovery.items.map((item, i) => (
-                    <label key={i} className="flex items-center gap-3 px-3 py-2 hover:bg-muted/50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={selectedItems.has(i)}
-                        onChange={() => {
-                          const next = new Set(selectedItems);
-                          if (next.has(i)) next.delete(i); else next.add(i);
-                          setSelectedItems(next);
-                        }}
-                        className="rounded"
-                      />
-                      <span className="text-xs flex-1 min-w-0">
-                        {item.identifier && <span className="text-muted-foreground mr-1">{item.identifier}.</span>}
-                        <span className="font-medium">{item.title}</span>
-                        {item.difficulty && (
-                          <span className={`ml-2 text-xs font-semibold ${item.difficulty.toLowerCase().includes('easy') ? 'text-green-600' : item.difficulty.toLowerCase().includes('hard') ? 'text-red-500' : 'text-yellow-600'}`}>
-                            {item.difficulty}
-                          </span>
-                        )}
-                        {item.url
-                          ? <span className="ml-2 text-[10px] text-green-600 font-mono">✓ link</span>
-                          : <span className="ml-2 text-[10px] text-muted-foreground/50">no link</span>}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                {(() => {
-                  const withUrl = discovery.items.filter(it => it.url).length;
-                  return withUrl > 0 ? (
-                    <p className="text-xs text-green-600">
-                      {withUrl}/{discovery.items.length} problems have direct links — those will be crawled individually for full content.
-                    </p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      No direct problem links found — GPT will extract from the list page text.
-                    </p>
-                  );
-                })()}
+          {step === 'confirm_discovery' && discovery && (
+            <div className="space-y-4">
+              <div className="rounded-md border bg-muted/30 p-3 space-y-1">
+                <p className="text-sm font-semibold">{discovery.page_title}</p>
+                <p className="text-xs text-muted-foreground">{discovery.description}</p>
+                {discovery.page_type === 'list' && (
+                  <p className="text-xs text-primary font-medium">
+                    {selectedItems.size} / {discovery.items.length} problem{discovery.items.length !== 1 ? 's' : ''} selected
+                  </p>
+                )}
               </div>
-            )}
 
-            {discovery.page_type === 'single' && (
-              <p className="text-sm text-muted-foreground">This appears to be a single problem page — it will be extracted directly.</p>
-            )}
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Additional instructions <span className="text-muted-foreground font-normal">(optional)</span></label>
-              <Textarea
-                value={instructions}
-                onChange={e => setInstructions(e.target.value)}
-                rows={3}
-                className="text-xs font-mono"
-                placeholder="e.g. Set difficulty to Senior for Hard problems"
-              />
-            </div>
-
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setStep('input')}>Back</Button>
-              <Button
-                onClick={() => extract()}
-                disabled={discovery.page_type === 'list' && selectedItems.size === 0}
-              >
-                {(() => {
-                  if (discovery.page_type !== 'list' || selectedItems.size === 0) return 'Extract Problem';
-                  const chosen = discovery.items.filter((_, i) => selectedItems.has(i));
-                  const withUrl = chosen.filter(it => it.url).length;
-                  const label = `${selectedItems.size} Problem${selectedItems.size !== 1 ? 's' : ''}`;
-                  return withUrl > 0 ? `Crawl & Extract ${label}` : `Extract ${label}`;
-                })()}
-              </Button>
-            </DialogFooter>
-          </div>
-        )}
-
-        {step === 'loading' && (
-          <div className="flex flex-col gap-3 py-2 px-1">
-            <div className="flex items-center gap-3">
-              <Loader2 className="h-5 w-5 animate-spin text-primary shrink-0" />
-              <span className="text-sm font-medium">
-                {mode === 'url' ? 'Extracting problems with GPT…' : 'Processing document…'}
-              </span>
-            </div>
-
-            {mode === 'file' && uploadProgress > 0 && uploadProgress < 100 && (
-              <p className="text-xs text-muted-foreground">Upload: {uploadProgress}%</p>
-            )}
-
-            {/* Full continuous log — includes discovery context + extract progress */}
-            <div className="rounded-md border bg-muted/40 overflow-hidden flex-1">
-              <div className="flex items-center gap-2 px-3 py-1.5 border-b bg-muted/60 shrink-0">
-                <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-xs font-medium text-muted-foreground">Live log</span>
-              </div>
-              <div className="h-[420px] overflow-y-auto p-3 space-y-0.5 font-mono text-xs">
-                {logs.length === 0 && <p className="text-muted-foreground/60 italic">Waiting for first event…</p>}
-                {logs.map((line, i) => (
-                  <div key={i} className={`leading-relaxed ${
-                    line.startsWith('✗') ? 'text-destructive' :
-                    line.startsWith('✓') ? 'text-green-600 dark:text-green-400' :
-                    line === '─────────────────────────────' ? 'text-muted-foreground/30 py-1' :
-                    'text-foreground'
-                  }`}>
-                    {line}
+              {discovery.page_type === 'list' && discovery.items.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium">Select problems to extract</label>
+                    <Button size="sm" variant="ghost" className="h-6 text-xs"
+                      onClick={() => setSelectedItems(
+                        selectedItems.size === discovery.items.length
+                          ? new Set()
+                          : new Set(discovery.items.map((_, i) => i))
+                      )}>
+                      {selectedItems.size === discovery.items.length ? 'Deselect all' : 'Select all'}
+                    </Button>
                   </div>
-                ))}
-                <div ref={logsEndRef} />
+                  <div className="border rounded-md divide-y max-h-64 overflow-y-auto">
+                    {discovery.items.map((item, i) => (
+                      <label key={i} className="flex items-center gap-3 px-3 py-2 hover:bg-muted/50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedItems.has(i)}
+                          onChange={() => {
+                            const next = new Set(selectedItems);
+                            if (next.has(i)) next.delete(i); else next.add(i);
+                            setSelectedItems(next);
+                          }}
+                          className="rounded"
+                        />
+                        <span className="text-xs flex-1 min-w-0">
+                          {item.identifier && <span className="text-muted-foreground mr-1">{item.identifier}.</span>}
+                          <span className="font-medium">{item.title}</span>
+                          {item.difficulty && (
+                            <span className={`ml-2 text-xs font-semibold ${item.difficulty.toLowerCase().includes('easy') ? 'text-green-600' : item.difficulty.toLowerCase().includes('hard') ? 'text-red-500' : 'text-yellow-600'}`}>
+                              {item.difficulty}
+                            </span>
+                          )}
+                          {item.url
+                            ? <span className="ml-2 text-[10px] text-green-600 font-mono">✓ link</span>
+                            : <span className="ml-2 text-[10px] text-muted-foreground/50">no link</span>}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  {(() => {
+                    const withUrl = discovery.items.filter(it => it.url).length;
+                    return withUrl > 0 ? (
+                      <p className="text-xs text-green-600">
+                        {withUrl}/{discovery.items.length} problems have direct links — those will be crawled individually for full content.
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        No direct problem links found — GPT will extract from the list page text.
+                      </p>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {discovery.page_type === 'single' && (
+                <p className="text-sm text-muted-foreground">This appears to be a single problem page — it will be extracted directly.</p>
+              )}
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Additional instructions <span className="text-muted-foreground font-normal">(optional)</span></label>
+                <Textarea
+                  value={instructions}
+                  onChange={e => setInstructions(e.target.value)}
+                  rows={3}
+                  className="text-xs font-mono"
+                  placeholder="e.g. Set difficulty to Senior for Hard problems"
+                />
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setStep('input')}>Back</Button>
+                <Button
+                  onClick={() => extract()}
+                  disabled={discovery.page_type === 'list' && selectedItems.size === 0}
+                >
+                  {(() => {
+                    if (discovery.page_type !== 'list' || selectedItems.size === 0) return 'Extract Problem';
+                    const chosen = discovery.items.filter((_, i) => selectedItems.has(i));
+                    const withUrl = chosen.filter(it => it.url).length;
+                    const label = `${selectedItems.size} Problem${selectedItems.size !== 1 ? 's' : ''}`;
+                    return withUrl > 0 ? `Crawl & Extract ${label}` : `Extract ${label}`;
+                  })()}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+
+          {step === 'loading' && (
+            <div className="flex flex-col gap-3 py-2 px-1">
+              <div className="flex items-center gap-3">
+                <Loader2 className="h-5 w-5 animate-spin text-primary shrink-0" />
+                <span className="text-sm font-medium">
+                  {mode === 'url' ? 'Extracting problems with GPT…' : 'Processing document…'}
+                </span>
+              </div>
+
+              {mode === 'file' && uploadProgress > 0 && uploadProgress < 100 && (
+                <p className="text-xs text-muted-foreground">Upload: {uploadProgress}%</p>
+              )}
+
+              {/* Full continuous log — includes discovery context + extract progress */}
+              <div className="rounded-md border bg-muted/40 overflow-hidden flex-1">
+                <div className="flex items-center gap-2 px-3 py-1.5 border-b bg-muted/60 shrink-0">
+                  <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-xs font-medium text-muted-foreground">Live log</span>
+                </div>
+                <div className="h-[420px] overflow-y-auto p-3 space-y-0.5 font-mono text-xs">
+                  {logs.length === 0 && <p className="text-muted-foreground/60 italic">Waiting for first event…</p>}
+                  {logs.map((line, i) => (
+                    <div key={i} className={`leading-relaxed ${line.startsWith('✗') ? 'text-destructive' :
+                        line.startsWith('✓') ? 'text-green-600 dark:text-green-400' :
+                          line === '─────────────────────────────' ? 'text-muted-foreground/30 py-1' :
+                            'text-foreground'
+                      }`}>
+                      {line}
+                    </div>
+                  ))}
+                  <div ref={logsEndRef} />
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {step === 'preview' && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Found <strong>{rows.length}</strong> problem(s) · <strong>{selected.size}</strong> selected
-              </p>
-              <Button size="sm" variant="ghost" onClick={toggleAll}>
-                {selected.size === rows.length ? 'Deselect all' : 'Select all'}
-              </Button>
-            </div>
+          {step === 'preview' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Found <strong>{rows.length}</strong> problem(s) · <strong>{selected.size}</strong> selected
+                </p>
+                <Button size="sm" variant="ghost" onClick={toggleAll}>
+                  {selected.size === rows.length ? 'Deselect all' : 'Select all'}
+                </Button>
+              </div>
 
-            <div className="border rounded-md overflow-auto max-h-[65vh]">
-              <table className="w-full text-xs border-collapse" style={{ minWidth: '800px' }}>
-                <thead className="bg-muted sticky top-0 z-10">
-                  <tr>
-                    <th className="w-8 px-2 py-2 text-left border-b"></th>
-                    <th className="w-44 px-2 py-2 text-left border-b font-medium">Title</th>
-                    <th className="w-32 px-2 py-2 text-left border-b font-medium">Category</th>
-                    <th className="w-24 px-2 py-2 text-left border-b font-medium">Difficulty</th>
-                    <th className="w-24 px-2 py-2 text-left border-b font-medium">Languages</th>
-                    <th className="min-w-[250px] px-2 py-2 text-left border-b font-medium">Problem (truncated)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map(r => {
-                    const expanded = expandedRow === r._idx;
-                    return (
-                      <tr key={r._idx} className="border-b last:border-0 align-top">
-                        <td className="px-2 py-2">
-                          <Checkbox checked={selected.has(r._idx)} onCheckedChange={() => toggle(r._idx)} />
-                        </td>
-                        <td className="px-1 py-1">
-                          <input
-                            value={r.title}
-                            onChange={e => updateRow(r._idx, { title: e.target.value })}
-                            className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs focus:border-border focus:outline-none focus:bg-background"
-                          />
-                        </td>
-                        <td className="px-1 py-1">
-                          <select
-                            value={r.category}
-                            onChange={e => updateRow(r._idx, { category: e.target.value })}
-                            className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs focus:border-border focus:outline-none focus:bg-background"
-                          >
-                            {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                        </td>
-                        <td className="px-1 py-1">
-                          <select
-                            value={r.difficulty}
-                            onChange={e => updateRow(r._idx, { difficulty: e.target.value })}
-                            className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs focus:border-border focus:outline-none focus:bg-background"
-                          >
-                            {difficulties.map(d => <option key={d} value={d}>{d}</option>)}
-                          </select>
-                        </td>
-                        <td className="px-1 py-1">
-                          <input
-                            value={r.languages}
-                            onChange={e => updateRow(r._idx, { languages: e.target.value })}
-                            className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs focus:border-border focus:outline-none focus:bg-background"
-                          />
-                        </td>
-                        <td className="px-1 py-1">
-                          {!expanded ? (
-                            <>
-                              <p className="line-clamp-2 text-xs text-muted-foreground">{r.problem_statement}</p>
-                              <button
-                                className="mt-0.5 text-xs text-primary hover:underline"
-                                onClick={() => setExpandedRow(r._idx)}
-                              >
-                                ▼ expand &amp; edit all fields
-                              </button>
-                            </>
-                          ) : (
-                            <div className="space-y-2">
-                              <button
-                                className="text-xs text-muted-foreground hover:text-foreground"
-                                onClick={() => setExpandedRow(null)}
-                              >
-                                ▲ collapse
-                              </button>
-                              <div className="space-y-1">
-                                <p className="text-xs font-medium">Problem Statement</p>
-                                <textarea
-                                  value={r.problem_statement}
-                                  onChange={e => updateRow(r._idx, { problem_statement: e.target.value })}
-                                  rows={5}
-                                  className="w-full resize-none rounded border bg-background px-2 py-1 text-xs font-mono focus:outline-none"
-                                />
+              <div className="border rounded-md overflow-auto max-h-[65vh]">
+                <table className="w-full text-xs border-collapse" style={{ minWidth: '800px' }}>
+                  <thead className="bg-muted sticky top-0 z-10">
+                    <tr>
+                      <th className="w-8 px-2 py-2 text-left border-b"></th>
+                      <th className="w-44 px-2 py-2 text-left border-b font-medium">Title</th>
+                      <th className="w-32 px-2 py-2 text-left border-b font-medium">Category</th>
+                      <th className="w-24 px-2 py-2 text-left border-b font-medium">Difficulty</th>
+                      <th className="w-24 px-2 py-2 text-left border-b font-medium">Languages</th>
+                      <th className="min-w-[250px] px-2 py-2 text-left border-b font-medium">Problem (truncated)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map(r => {
+                      const expanded = expandedRow === r._idx;
+                      return (
+                        <tr key={r._idx} className="border-b last:border-0 align-top">
+                          <td className="px-2 py-2">
+                            <Checkbox checked={selected.has(r._idx)} onCheckedChange={() => toggle(r._idx)} />
+                          </td>
+                          <td className="px-1 py-1">
+                            <input
+                              value={r.title}
+                              onChange={e => updateRow(r._idx, { title: e.target.value })}
+                              className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs focus:border-border focus:outline-none focus:bg-background"
+                            />
+                          </td>
+                          <td className="px-1 py-1">
+                            <select
+                              value={r.category}
+                              onChange={e => updateRow(r._idx, { category: e.target.value })}
+                              className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs focus:border-border focus:outline-none focus:bg-background"
+                            >
+                              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-1 py-1">
+                            <select
+                              value={r.difficulty}
+                              onChange={e => updateRow(r._idx, { difficulty: e.target.value })}
+                              className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs focus:border-border focus:outline-none focus:bg-background"
+                            >
+                              {difficulties.map(d => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-1 py-1">
+                            <input
+                              value={r.languages}
+                              onChange={e => updateRow(r._idx, { languages: e.target.value })}
+                              className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs focus:border-border focus:outline-none focus:bg-background"
+                            />
+                          </td>
+                          <td className="px-1 py-1">
+                            {!expanded ? (
+                              <>
+                                <p className="line-clamp-2 text-xs text-muted-foreground">{r.problem_statement}</p>
+                                <button
+                                  className="mt-0.5 text-xs text-primary hover:underline"
+                                  onClick={() => setExpandedRow(r._idx)}
+                                >
+                                  ▼ expand &amp; edit all fields
+                                </button>
+                              </>
+                            ) : (
+                              <div className="space-y-2">
+                                <button
+                                  className="text-xs text-muted-foreground hover:text-foreground"
+                                  onClick={() => setExpandedRow(null)}
+                                >
+                                  ▲ collapse
+                                </button>
+                                <div className="space-y-1">
+                                  <p className="text-xs font-medium">Problem Statement</p>
+                                  <textarea
+                                    value={r.problem_statement}
+                                    onChange={e => updateRow(r._idx, { problem_statement: e.target.value })}
+                                    rows={5}
+                                    className="w-full resize-none rounded border bg-background px-2 py-1 text-xs font-mono focus:outline-none"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <p className="text-xs font-medium">Discussion Hints (JSON)</p>
+                                  <textarea
+                                    value={r.discussion_hints ?? ''}
+                                    onChange={e => updateRow(r._idx, { discussion_hints: e.target.value || null })}
+                                    rows={3}
+                                    className="w-full resize-none rounded border bg-background px-2 py-1 text-xs font-mono focus:outline-none"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <p className="text-xs font-medium">Review Rubric (JSON)</p>
+                                  <textarea
+                                    value={r.review_rubric ?? ''}
+                                    onChange={e => updateRow(r._idx, { review_rubric: e.target.value || null })}
+                                    rows={3}
+                                    className="w-full resize-none rounded border bg-background px-2 py-1 text-xs font-mono focus:outline-none"
+                                  />
+                                </div>
                               </div>
-                              <div className="space-y-1">
-                                <p className="text-xs font-medium">Discussion Hints (JSON)</p>
-                                <textarea
-                                  value={r.discussion_hints ?? ''}
-                                  onChange={e => updateRow(r._idx, { discussion_hints: e.target.value || null })}
-                                  rows={3}
-                                  className="w-full resize-none rounded border bg-background px-2 py-1 text-xs font-mono focus:outline-none"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-xs font-medium">Review Rubric (JSON)</p>
-                                <textarea
-                                  value={r.review_rubric ?? ''}
-                                  onChange={e => updateRow(r._idx, { review_rubric: e.target.value || null })}
-                                  rows={3}
-                                  className="w-full resize-none rounded border bg-background px-2 py-1 text-xs font-mono focus:outline-none"
-                                />
-                              </div>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setStep(discovery ? 'confirm_discovery' : 'input')}>Back</Button>
+                <Button onClick={confirmImport} disabled={selected.size === 0}>
+                  Import {selected.size} problem{selected.size !== 1 ? 's' : ''}
+                </Button>
+              </DialogFooter>
             </div>
+          )}
 
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setStep(discovery ? 'confirm_discovery' : 'input')}>Back</Button>
-              <Button onClick={confirmImport} disabled={selected.size === 0}>
-                Import {selected.size} problem{selected.size !== 1 ? 's' : ''}
-              </Button>
-            </DialogFooter>
-          </div>
-        )}
-
-        {step === 'importing' && (
-          <div className="flex flex-col items-center gap-4 py-12">
-            <Loader2 className="h-8 w-8 animate-spin" />
-            <p className="text-sm text-muted-foreground">Saving problems…</p>
-          </div>
-        )}
-
-        {step === 'done' && result && (
-          <div className="flex flex-col items-center gap-4 py-8">
-            <CheckCircle2 className="h-10 w-10 text-green-500" />
-            <div className="text-center">
-              <p className="font-semibold">Import complete</p>
-              <p className="text-sm text-muted-foreground">{result.imported} imported</p>
+          {step === 'importing' && (
+            <div className="flex flex-col items-center gap-4 py-12">
+              <Loader2 className="h-8 w-8 animate-spin" />
+              <p className="text-sm text-muted-foreground">Saving problems…</p>
             </div>
-            <Button onClick={handleClose}>Done</Button>
-          </div>
-        )}
+          )}
+
+          {step === 'done' && result && (
+            <div className="flex flex-col items-center gap-4 py-8">
+              <CheckCircle2 className="h-10 w-10 text-green-500" />
+              <div className="text-center">
+                <p className="font-semibold">Import complete</p>
+                <p className="text-sm text-muted-foreground">{result.imported} imported</p>
+              </div>
+              <Button onClick={handleClose}>Done</Button>
+            </div>
+          )}
 
         </div>
       </DialogContent>
@@ -1123,8 +1122,8 @@ function SortIcon({ col, sort }: { col: SortKey; sort: { key: SortKey; dir: Sort
 const DIFF_ORDER: Record<string, number> = { Beginner: 0, Mid: 1, Senior: 2 };
 const DIFF_BADGE: Record<string, string> = {
   Beginner: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-  Mid:      'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-  Senior:   'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
+  Mid: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
+  Senior: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
 };
 
 // ── Main CodeTopicsTab ─────────────────────────────────────────────────────────

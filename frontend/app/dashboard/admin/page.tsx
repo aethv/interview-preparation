@@ -23,6 +23,7 @@ import {
 import { QuestionBankTab } from './question-bank-tab';
 import { EnglishTopicsTab } from './english-topics-tab';
 import { CodeTopicsTab } from './code-topics-tab';
+import { PromptsTab } from './prompts-tab';
 
 // Group definitions — order matters for display
 const CONFIG_GROUPS: { label: string; keys: string[] }[] = [
@@ -359,7 +360,7 @@ export default function AdminPage() {
   const configMap = new Map(configs?.map((c) => [c.key, c]) ?? []);
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 p-6">
+    <div className="max-w-6xl mx-auto space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Admin</h1>
@@ -379,6 +380,7 @@ export default function AdminPage() {
       <Tabs defaultValue="config">
         <TabsList>
           <TabsTrigger value="config">Agent Config</TabsTrigger>
+          <TabsTrigger value="prompts">Prompts</TabsTrigger>
           <TabsTrigger value="questions">Question Bank</TabsTrigger>
           <TabsTrigger value="english">English Topics</TabsTrigger>
           <TabsTrigger value="code">Code Topics</TabsTrigger>
@@ -404,6 +406,10 @@ export default function AdminPage() {
               );
             })
           )}
+        </TabsContent>
+
+        <TabsContent value="prompts" className="mt-4">
+          <PromptsTab />
         </TabsContent>
 
         <TabsContent value="questions" className="mt-4">
