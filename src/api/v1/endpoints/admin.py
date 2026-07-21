@@ -14,8 +14,10 @@ from src.schemas.admin import (
     BulkConfigUpdate,
     UserAdminResponse,
     PromoteUserRequest,
+    SecretUpdate,
 )
 from src.services.orchestrator.config_service import AgentConfigService
+from src.core.secrets import openai_api_key
 
 router = APIRouter()
 
@@ -41,18 +43,33 @@ _CHAT_PREFIXES = ('gpt-', 'o1', 'o3', 'o4', 'chatgpt-')
 async def list_models(
     vendor: str = Query(default="openai"),
     _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ):
     """Return available chat-completion models for the given vendor."""
     if vendor != "openai":
         raise HTTPException(status_code=400, detail=f"Vendor '{vendor}' not supported")
 
+    from openai import AsyncOpenAI
+    from src.services.data.secret_service import get_secret
+
+    api_key = await get_secret(db, "openai_api_key")
+    if not api_key:
+        # Distinguish "no key configured" from "key rejected" — the empty model
+        # dropdown gave no clue which it was.
+        raise HTTPException(
+            status_code=400,
+            detail="No OpenAI API key configured. Add one under API Keys below.",
+        )
+
     try:
-        from openai import AsyncOpenAI
-        from src.core.config import settings
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        client = AsyncOpenAI(api_key=api_key)
         response = await client.models.list()
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to fetch models: {exc}")
+        # Surface the vendor's own message (it never contains the key)
+        raise HTTPException(
+            status_code=502,
+            detail=f"OpenAI rejected the request: {type(exc).__name__}: {exc}",
+        )
 
     models = []
     for m in response.data:
@@ -64,6 +81,88 @@ async def list_models(
         models.append(m.id)
 
     return {"vendor": vendor, "models": sorted(models)}
+
+
+# ── Secret endpoints ──────────────────────────────────────────────────────────
+#
+# Secrets are write-only over the API: a stored value is never returned, only a
+# masked preview. Values are encrypted at rest (see src/core/secrets.py).
+
+
+@router.get("/secrets")
+async def list_secrets(
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """List managed secrets with masked previews. Never returns a real value."""
+    from src.services.data.secret_service import list_secret_status
+
+    return await list_secret_status(db)
+
+
+@router.put("/secrets/{name}")
+async def update_secret(
+    name: str,
+    body: SecretUpdate,
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Store a secret. The value is encrypted and never echoed back."""
+    from src.services.data.secret_service import set_secret
+
+    try:
+        row = await set_secret(db, name, body.value, updated_by=user.email)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "name": row.name,
+        "masked": row.masked_preview,
+        "source": "stored",
+        "is_set": True,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "updated_by": row.updated_by,
+    }
+
+
+@router.delete("/secrets/{name}")
+async def remove_secret(
+    name: str,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a stored secret so the environment variable applies again."""
+    from src.services.data.secret_service import delete_secret
+
+    deleted = await delete_secret(db, name)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="No stored value for that secret")
+    return {"name": name, "deleted": True}
+
+
+@router.post("/secrets/{name}/test")
+async def test_secret(
+    name: str,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Check a stored key against the vendor, so admins get a clear yes/no."""
+    from src.services.data.secret_service import get_secret
+
+    value = await get_secret(db, name)
+    if not value:
+        return {"ok": False, "detail": "No value configured"}
+
+    if name == "openai_api_key":
+        try:
+            from openai import AsyncOpenAI
+            await AsyncOpenAI(api_key=value).models.list()
+            return {"ok": True, "detail": "Key accepted by OpenAI"}
+        except Exception as exc:
+            return {"ok": False, "detail": f"{type(exc).__name__}: {exc}"}
+
+    # Other vendors have no cheap validation endpoint wired up yet
+    return {"ok": True, "detail": "Stored (not verified against the vendor)"}
 
 
 # ── Config endpoints ──────────────────────────────────────────────────────────

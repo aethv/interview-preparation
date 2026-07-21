@@ -11,7 +11,7 @@ interface AvatarWithWavesProps {
 
 export function AvatarWithWaves({ room, avatarSrc = '/avatar.jpg' }: AvatarWithWavesProps) {
   return (
-    <Card className="h-full w-full">
+    <Card className="h-full w-full min-h-0 overflow-hidden">
       <CardContent className="h-full p-0 flex flex-col relative overflow-hidden">
         {/* Avatar Image with Waves Overlay */}
         <div className="flex-1 flex items-center justify-center bg-primary/5 relative overflow-hidden">

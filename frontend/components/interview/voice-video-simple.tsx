@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Mic, MicOff, Video, VideoOff, PhoneOff, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { getCameraPreference } from '@/lib/media-preferences';
 
 interface VoiceVideoProps {
   token: string;
@@ -116,7 +117,8 @@ export function VoiceVideoRoom({
             if (!remoteAudioRef.current) {
               const audioElement = document.createElement('audio');
               audioElement.autoplay = true;
-              audioElement.playsInline = true;
+              // playsInline is not a property of HTMLAudioElement; the attribute
+              // below is what iOS Safari actually reads.
               audioElement.setAttribute('playsinline', 'true');
               // Important: Enable autoplay and mute control
               audioElement.muted = false;
@@ -149,9 +151,11 @@ export function VoiceVideoRoom({
           return;
         }
 
-        // Enable local tracks
-        await room.localParticipant.setCameraEnabled(true);
+        // Enable local tracks — audio always, camera only if the user opted in
         await room.localParticipant.setMicrophoneEnabled(true);
+        if (getCameraPreference()) {
+          await room.localParticipant.setCameraEnabled(true);
+        }
 
         // Attach local video
         const localVideoTrack = room.localParticipant.getTrackPublication(Track.Source.Camera);

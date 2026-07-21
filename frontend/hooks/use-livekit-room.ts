@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Room, RoomEvent } from 'livekit-client';
+import { Room, RoomEvent, DisconnectReason } from 'livekit-client';
 
 type ConnectionState =
   | 'idle'
@@ -12,7 +12,8 @@ interface UseLiveKitRoomOptions {
   token?: string | null;
   url?: string | null;
   onConnected?: (room: Room) => void;
-  onDisconnected?: (reason?: string) => void;
+  /** LiveKit reports a DisconnectReason enum value, not a string. */
+  onDisconnected?: (reason?: DisconnectReason) => void;
   onError?: (error: Error) => void;
 }
 
@@ -27,6 +28,17 @@ export function useLiveKitRoom({
   const mountedRef = useRef(false);
   const connectingRef = useRef(false);
   const remoteAudioElementRef = useRef<HTMLAudioElement | null>(null);
+
+  // Callbacks are inline arrow functions in the caller, so they get a new
+  // identity on every render. Holding them in refs keeps connect() stable —
+  // otherwise the connect effect re-ran on every render and hammered LiveKit
+  // with region-discovery requests.
+  const onConnectedRef = useRef(onConnected);
+  const onDisconnectedRef = useRef(onDisconnected);
+  const onErrorRef = useRef(onError);
+  onConnectedRef.current = onConnected;
+  onDisconnectedRef.current = onDisconnected;
+  onErrorRef.current = onError;
 
   const [state, setState] = useState<ConnectionState>('idle');
   const [error, setError] = useState<Error | null>(null);
@@ -61,17 +73,15 @@ export function useLiveKitRoom({
       room.on(RoomEvent.Connected, () => {
         console.log('✅ LiveKit connected');
         setState('connected');
-        if (onConnected && roomRef.current) {
-          onConnected(roomRef.current);
+        if (onConnectedRef.current && roomRef.current) {
+          onConnectedRef.current(roomRef.current);
         }
       });
 
       room.on(RoomEvent.Disconnected, (reason) => {
         console.warn('⚠️ LiveKit disconnected', reason);
         setState('disconnected');
-        if (onDisconnected) {
-          onDisconnected(reason);
-        }
+        onDisconnectedRef.current?.(reason);
       });
 
       room.on(RoomEvent.ConnectionStateChanged, (connectionState) => {
@@ -85,7 +95,8 @@ export function useLiveKitRoom({
     }
 
     return roomRef.current;
-  }, [onConnected, onDisconnected]);
+    // No dependencies: the room is created once and callbacks are read from refs
+  }, []);
 
   /** Connect */
   const connect = useCallback(async () => {
@@ -94,8 +105,9 @@ export function useLiveKitRoom({
       console.log('⏳ Already connecting, skipping...');
       return;
     }
-    if (roomRef.current?.state === 'connected') {
-      console.log('✅ Already connected, skipping...');
+    const existing = roomRef.current?.state;
+    if (existing === 'connected' || existing === 'connecting' || existing === 'reconnecting') {
+      console.log(`✅ Room already ${existing}, skipping connect`);
       return;
     }
 
@@ -112,13 +124,11 @@ export function useLiveKitRoom({
       const error = err as Error;
       setError(error);
       setState('error');
-      if (onError) {
-        onError(error);
-      }
+      onErrorRef.current?.(error);
     } finally {
       connectingRef.current = false;
     }
-  }, [token, url, getOrCreateRoom, onError]);
+  }, [token, url, getOrCreateRoom]);
 
   /** Manual reconnect */
   const reconnect = useCallback(async () => {

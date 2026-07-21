@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Room, RoomEvent, Track } from 'livekit-client';
 import { Card, CardContent } from '@/components/ui/card';
+import { VideoOff } from 'lucide-react';
+import { MicLevelMeter } from './mic-level-meter';
 
 interface ParticipantVideoProps {
   room: Room | null;
@@ -83,7 +85,9 @@ export function ParticipantVideo({ room, userName = 'You' }: ParticipantVideoPro
   }, [room, room?.state]); // Re-run when room or room state changes
 
   return (
-    <Card className="h-full w-full">
+    // min-h-0 + overflow-hidden: without them the <video> falls back to its
+    // intrinsic size and spills over the transcript below.
+    <Card className="h-full w-full min-h-0 overflow-hidden">
       <CardContent className="h-full p-0 relative bg-black rounded-lg overflow-hidden">
         {/* Always render video element - track attachment happens regardless */}
         <video
@@ -95,12 +99,19 @@ export function ParticipantVideo({ room, userName = 'You' }: ParticipantVideoPro
         />
         {/* Show overlay when no video track is available */}
         {!hasVideo && (
-          <div className="absolute inset-0 flex items-center justify-center bg-muted/80 pointer-events-none">
-            <p className="text-muted-foreground text-sm">No video</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-muted/80 pointer-events-none">
+            <VideoOff className="h-6 w-6 text-muted-foreground" />
+            <p className="text-muted-foreground text-sm">Camera off</p>
+            <p className="text-muted-foreground text-xs">Audio only — turn the camera on below if you want it</p>
           </div>
         )}
-        <div className="absolute bottom-2 left-2 bg-black/50 text-white px-2 py-1 rounded text-xs z-10">
-          {userName}
+        {/* Name + live mic level, so an unheard user can tell whether their
+            audio is actually reaching the room */}
+        <div className="absolute bottom-2 left-2 right-2 flex items-center gap-2 bg-black/60 text-white px-2 py-1 rounded z-10">
+          <span className="text-xs truncate">{userName}</span>
+          <div className="ml-auto">
+            <MicLevelMeter room={room} compact />
+          </div>
         </div>
       </CardContent>
     </Card>

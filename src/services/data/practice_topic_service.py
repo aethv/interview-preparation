@@ -61,6 +61,8 @@ async def create_english_topic(db: AsyncSession, data: EnglishTopicCreate) -> En
         skill_focus=data.skill_focus,
         level=data.level,
         scenario_prompt=data.scenario_prompt,
+        # Stored as plain JSON, not Pydantic objects
+        scenes=[s.model_dump() for s in data.scenes] or None,
         key_vocabulary=data.key_vocabulary,
         evaluation_criteria=data.evaluation_criteria,
         source=data.source,
@@ -78,7 +80,12 @@ async def update_english_topic(
     topic = await get_english_topic(db, topic_id)
     if not topic:
         return None
+    # model_dump converts nested TopicScene models to plain dicts, which is what
+    # the JSONB column needs. An explicit [] clears the scenes; omitting the
+    # field (None) leaves them untouched.
     for field, value in data.model_dump(exclude_none=True).items():
+        if field == "scenes":
+            value = value or None
         setattr(topic, field, value)
     await db.commit()
     await db.refresh(topic)

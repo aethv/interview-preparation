@@ -13,6 +13,7 @@ from typing import Literal, Tuple
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 
+from src.core.session_modes import allows_code
 from src.services.orchestrator.types import InterviewState
 from src.services.orchestrator.nodes import NodeHandler
 
@@ -61,6 +62,9 @@ def create_interview_graph(node_handler: NodeHandler) -> Tuple[StateGraph, Memor
 
     def route_from_ingest(state: InterviewState) -> Literal["greeting", "code_review", "detect_intent"]:
         """Route from ingest_input: greeting on first turn, code_review if code submitted, else detect_intent."""
+        # English practice is voice-only. Even if current_code leaks into state
+        # (stale checkpoint, replayed request), never route to the code nodes.
+        code_allowed = allows_code(state.get("session_mode"))
         # Check if greeting already exists in conversation (prevents duplicates on state restore)
         has_greeting = False
         conv_history = state.get("conversation_history", [])
@@ -74,7 +78,7 @@ def create_interview_graph(node_handler: NodeHandler) -> Tuple[StateGraph, Memor
         if not has_greeting and state.get("turn_count", 0) == 0:
             return "greeting"
 
-        if state.get("current_code"):
+        if code_allowed and state.get("current_code"):
             return "code_review"
 
         return "detect_intent"
@@ -140,6 +144,16 @@ def route_action_node(state: InterviewState) -> Literal[
         "greeting", "question", "followup",
         "sandbox_guidance", "code_review", "evaluation", "closing"
     ]
+
+    # Last line of defence: the decision model for english_practice cannot emit
+    # code actions, but a restored checkpoint could carry a stale next_node.
+    if not allows_code(state.get("session_mode")):
+        if action in ("sandbox_guidance", "code_review"):
+            logger.warning(
+                f"Dropping code action '{action}' in english_practice session "
+                f"{state.get('interview_id')}; continuing the conversation instead."
+            )
+            return "followup" if state.get("last_response") else "question"
 
     if action not in valid_actions:
         logger.error(

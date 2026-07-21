@@ -44,6 +44,29 @@ def get_model() -> str:
     return _cfg.get_cached("model", DEFAULT_MODEL)
 
 
+def _get_role_model(key: str) -> str:
+    """Model for a role, falling back to the default when unset or blank."""
+    value = _cfg.get_cached(key, "")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return get_model()
+
+
+def get_decision_model() -> str:
+    """Intent detection, action routing, answer scoring, summaries."""
+    return _get_role_model("model_decision")
+
+
+def get_conversation_model() -> str:
+    """Spoken output: greeting, questions, follow-ups, closing."""
+    return _get_role_model("model_conversation")
+
+
+def get_evaluation_model() -> str:
+    """Final feedback and code review."""
+    return _get_role_model("model_evaluation")
+
+
 def get_temperature_creative() -> float:
     return float(_cfg.get_cached("temperature_creative", TEMPERATURE_CREATIVE))
 

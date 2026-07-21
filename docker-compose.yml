@@ -54,6 +54,8 @@ services:
       - ./src:/app/src
       - ./assets:/app/assets
       - ./alembic:/app/alembic
+      # Maintenance scripts, runnable with `docker compose exec api python -m scripts.<name>`
+      - ./scripts:/app/scripts
       # Docker socket for sandbox (development only - use separate service in production)
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
@@ -63,7 +65,10 @@ services:
         condition: service_healthy
     # Note: --reload is disabled in Docker to avoid memory issues with file watchers
     # For development with hot reload, run uvicorn locally: uvicorn src.main:app --reload
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000
+    #
+    # Must run migrations first, mirroring the Dockerfile CMD. Overriding the
+    # command without `alembic upgrade head` is what left dev schemas unmigrated.
+    command: sh -c "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000"
 
   agent:
     build:

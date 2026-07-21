@@ -71,6 +71,47 @@ def build_resume_context(state: "InterviewState") -> str:
     return "\n".join(parts) if parts else "No resume details available."
 
 
+# Control-plane calls (intent, routing, scoring) do not need the full history:
+# the rolling summary carries older context, so only the recent turns are sent
+# verbatim. This caps prompt growth over a long session.
+CONTROL_WINDOW_MESSAGES = 6
+CONTROL_MESSAGE_CHAR_LIMIT = 400
+
+
+def build_control_context(state: "InterviewState") -> str:
+    """Compact conversation view for decision-making calls.
+
+    Returns the rolling summary plus the last few messages, each truncated.
+    Costs a bounded number of tokens regardless of how long the session runs.
+    """
+    summary = state.get("conversation_summary") or ""
+    history = state.get("conversation_history", [])
+
+    lines: list[str] = []
+    if summary and summary != "No conversation yet.":
+        lines.append(f"SUMMARY SO FAR: {summary}")
+        lines.append("")
+
+    recent = [
+        msg for msg in history[-CONTROL_WINDOW_MESSAGES:]
+        if msg.get("role") and msg.get("content")
+        and not (msg.get("role") == "system" and "CHECKPOINT" in msg.get("content", ""))
+    ]
+
+    if not recent:
+        lines.append("RECENT MESSAGES: none yet.")
+        return "\n".join(lines)
+
+    lines.append(f"RECENT MESSAGES (last {len(recent)}):")
+    for msg in recent:
+        content = msg.get("content", "")
+        if len(content) > CONTROL_MESSAGE_CHAR_LIMIT:
+            content = content[:CONTROL_MESSAGE_CHAR_LIMIT] + "…"
+        lines.append(f"{msg.get('role', 'unknown').upper()}: {content}")
+
+    return "\n".join(lines)
+
+
 def build_conversation_context(state: "InterviewState", interview_logger=None) -> str:
     """Build conversation context string.
 

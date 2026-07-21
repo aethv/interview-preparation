@@ -38,6 +38,60 @@ logger = logging.getLogger(__name__)
 # AgentServer is lightweight and safe to instantiate at module level
 server = AgentServer()
 
+# Voice instructions per session mode. English practice must never mention the
+# sandbox — the code panel does not exist in that UI and the graph blocks code nodes.
+_INTERVIEW_INSTRUCTIONS = (
+    "You are a professional interviewer conducting a technical interview. "
+    "IMPORTANT: The candidate has access to a code sandbox where they can write and submit code. "
+    "If the candidate asks to write code, show code, or review code, guide them to use the sandbox. "
+    "Always acknowledge and respond to candidate requests, especially requests related to code or the sandbox. "
+    "All your responses will be SPOKEN ALOUD. "
+    "Therefore, use short, clear sentences and natural, conversational language. "
+    "Ensure your questions are focused and easy to understand when spoken."
+)
+
+_ENGLISH_PRACTICE_INSTRUCTIONS = (
+    "You are a friendly English conversation partner running a roleplay practice session. "
+    "This is NOT a job interview and NOT a coding session. "
+    "There is no code editor and no sandbox. Never suggest writing, running or reviewing code, "
+    "and never mention programming tasks, whatever the scenario is about. "
+    "Stay in your role in the scenario, keep your turns short so the learner does most of the talking, "
+    "and correct mistakes gently by restating them correctly before moving on. "
+    "All your responses will be SPOKEN ALOUD, so use short, clear, natural sentences."
+)
+
+
+def _agent_instructions(session_mode: str | None) -> str:
+    """Pick the voice persona for this session."""
+    from src.core.session_modes import is_english_practice
+
+    if is_english_practice(session_mode):
+        return _ENGLISH_PRACTICE_INSTRUCTIONS
+    return _INTERVIEW_INSTRUCTIONS
+
+
+async def _fetch_session_mode(db, interview_id: int) -> str:
+    """Read session_mode for this room; defaults to interview on any failure."""
+    if not db:
+        return "interview"
+    try:
+        from sqlalchemy import select
+        from src.core.session_modes import normalize_session_mode
+        from src.models.interview import Interview
+
+        result = await db.execute(
+            select(Interview.session_mode, Interview.job_description, Interview.title)
+            .where(Interview.id == interview_id)
+        )
+        row = result.first()
+        if not row:
+            return "interview"
+        return normalize_session_mode(row[0], row[1], row[2])
+    except Exception as e:
+        logger.warning(
+            f"Could not read session_mode for interview {interview_id}: {e}")
+        return "interview"
+
 
 @server.rtc_session()
 async def entrypoint(ctx: JobContext):
@@ -89,17 +143,9 @@ async def entrypoint(ctx: JobContext):
             tts=resources.tts,
         )
 
-        agent = Agent(
-            instructions=(
-                "You are a professional interviewer conducting a technical interview. "
-                "IMPORTANT: The candidate has access to a code sandbox where they can write and submit code. "
-                "If the candidate asks to write code, show code, or review code, guide them to use the sandbox. "
-                "Always acknowledge and respond to candidate requests, especially requests related to code or the sandbox. "
-                "All your responses will be SPOKEN ALOUD. "
-                "Therefore, use short, clear sentences and natural, conversational language. "
-                "Ensure your questions are focused and easy to understand when spoken."
-            ),
-        )
+        session_mode = await _fetch_session_mode(resources.db, interview_id)
+
+        agent = Agent(instructions=_agent_instructions(session_mode))
 
         await resources.session.start(
             agent=agent,

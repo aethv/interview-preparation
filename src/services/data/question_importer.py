@@ -9,6 +9,7 @@ import instructor
 from pydantic import BaseModel, Field
 
 from src.core.config import settings
+from src.core.secrets import openai_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ class ClickTargets(BaseModel):
 
 async def _get_click_targets(instructions: str) -> list[str]:
     """Ask GPT to extract menu-item labels to click from user instructions."""
-    client = instructor.patch(AsyncOpenAI(api_key=settings.OPENAI_API_KEY))
+    client = instructor.patch(AsyncOpenAI(api_key=openai_api_key()))
     try:
         result = await client.chat.completions.create(
             model=_PARSE_MODEL,
@@ -209,7 +210,7 @@ async def _parse_text_to_qa(
     """Ask GPT to extract structured Q&A pairs from raw text."""
     await _log(log_cb, f"→ Sending {min(len(raw_text), 30_000):,} chars to GPT ({_PARSE_MODEL}) for Q&A extraction…")
 
-    client = instructor.patch(AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=90.0))
+    client = instructor.patch(AsyncOpenAI(api_key=openai_api_key(), timeout=90.0))
 
     instructions_block = ""
     if instructions and instructions.strip():

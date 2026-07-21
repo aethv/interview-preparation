@@ -1,6 +1,7 @@
 """Service for managing interview state between database and LangGraph."""
 
 from typing import TYPE_CHECKING, Optional
+from src.core.session_modes import normalize_session_mode
 from src.models.interview import Interview
 
 if TYPE_CHECKING:
@@ -125,6 +126,13 @@ def interview_to_state(interview: Interview, user: Optional["User"] = None) -> "
         "candidate_name": candidate_name,
         "resume_structured": interview.resume_context or {},
         "job_description": interview.job_description,
+        # Drives graph routing: english_practice never reaches the code nodes.
+        # normalize_* keeps pre-migration rows working via marker inference.
+        "session_mode": normalize_session_mode(
+            getattr(interview, "session_mode", None),
+            interview.job_description,
+            interview.title,
+        ),
         "conversation_history": sanitized_history,
         "turn_count": interview.turn_count,
         "questions_asked": questions_asked,

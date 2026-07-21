@@ -6,6 +6,7 @@ from collections import defaultdict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
+from src.core.session_modes import MODE_ENGLISH_PRACTICE, is_english_practice
 from src.models.interview import Interview
 from src.models.user import User
 
@@ -144,7 +145,10 @@ class InterviewAnalytics:
             select(Interview)
             .where(
                 Interview.user_id == user_id,
-                Interview.status == "completed"
+                Interview.status == "completed",
+                # English practice is scored on language, not on the four
+                # interview skills — including it would plot zeros.
+                Interview.session_mode != MODE_ENGLISH_PRACTICE,
             )
             .order_by(Interview.completed_at.asc())
         )
@@ -227,7 +231,8 @@ class InterviewAnalytics:
             select(Interview)
             .where(
                 Interview.user_id == user_id,
-                Interview.status == "completed"
+                Interview.status == "completed",
+                Interview.session_mode != MODE_ENGLISH_PRACTICE,
             )
         )
         interviews = result.scalars().all()
@@ -294,7 +299,11 @@ class InterviewAnalytics:
             }
 
         result = await db.execute(
-            select(Interview).where(Interview.id.in_(interview_ids))
+            select(Interview).where(
+                Interview.id.in_(interview_ids),
+                # Language sessions have no comparable skill scores
+                Interview.session_mode != MODE_ENGLISH_PRACTICE,
+            )
         )
         interviews = result.scalars().all()
 
@@ -361,6 +370,25 @@ class InterviewAnalytics:
             }
 
         feedback = interview.feedback
+
+        # English sessions carry language scores, not the four interview skills.
+        # Return them under their own keys so the caller can render the right card
+        # instead of showing four zeros.
+        if is_english_practice(getattr(interview, "session_mode", None)):
+            return {
+                "session_mode": MODE_ENGLISH_PRACTICE,
+                "fluency": {"score": feedback.get("fluency_score", 0.0)},
+                "grammar": {"score": feedback.get("grammar_score", 0.0)},
+                "vocabulary": {"score": feedback.get("vocabulary_score", 0.0)},
+                "task_completion": {"score": feedback.get("task_completion_score", 0.0)},
+                "overall": {"score": feedback.get("overall_score", 0.0)},
+                "strengths": feedback.get("strengths", []),
+                "weaknesses": feedback.get("weaknesses", []),
+                "recommendations": feedback.get("recommendations", []),
+                "corrections": feedback.get("corrections", []),
+                "vocabulary_used": feedback.get("vocabulary_used", []),
+                "vocabulary_missed": feedback.get("vocabulary_missed", []),
+            }
 
         # Extract skill breakdown if available (new format)
         skill_breakdown = feedback.get("skill_breakdown", {})

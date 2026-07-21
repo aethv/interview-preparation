@@ -24,12 +24,13 @@ import { QuestionBankTab } from './question-bank-tab';
 import { EnglishTopicsTab } from './english-topics-tab';
 import { CodeTopicsTab } from './code-topics-tab';
 import { PromptsTab } from './prompts-tab';
+import { ApiKeysPanel } from '@/components/admin/api-keys-panel';
 
 // Group definitions — order matters for display
 const CONFIG_GROUPS: { label: string; keys: string[] }[] = [
   {
-    label: 'LLM Model',
-    keys: ['model'],
+    label: 'LLM Models',
+    keys: ['model', 'model_decision', 'model_conversation', 'model_evaluation'],
   },
   {
     label: 'Temperatures',
@@ -64,6 +65,13 @@ const CONFIG_GROUPS: { label: string; keys: string[] }[] = [
 
 const VENDORS = [{ value: 'openai', label: 'OpenAI' }];
 
+// Keys rendered with the model picker. All but `model` may be left blank,
+// which means "fall back to the default model".
+const MODEL_KEYS = ['model', 'model_decision', 'model_conversation', 'model_evaluation'];
+
+// Sentinel: Radix Select cannot hold an empty string as an item value.
+const USE_DEFAULT = '__default__';
+
 function ModelSelector({
   entry,
   onSave,
@@ -74,13 +82,18 @@ function ModelSelector({
   isSaving: boolean;
 }) {
   const [vendor, setVendor] = useState('openai');
-  const [selectedModel, setSelectedModel] = useState((entry.value as string) ?? '');
+  const currentValue = (entry.value as string) ?? '';
+  const [selectedModel, setSelectedModel] = useState(currentValue || USE_DEFAULT);
 
-  const isDirty = selectedModel !== entry.value;
+  // Only the base `model` key is required; role keys may be left unset
+  const allowDefault = entry.key !== 'model';
+  const savedValue = selectedModel === USE_DEFAULT ? '' : selectedModel;
+  const isDirty = savedValue !== currentValue;
 
-  const { data, isLoading, isRefetching, refetch } = useQuery<ModelsResponse>({
+  const { data, isLoading, isRefetching, refetch, error } = useQuery<ModelsResponse>({
     queryKey: ['admin-models', vendor],
     queryFn: () => adminApi.getModels(vendor),
+    retry: false,
   });
 
   const models = data?.models ?? [];
@@ -97,8 +110,8 @@ function ModelSelector({
         {isDirty && (
           <Button
             size="sm"
-            onClick={() => onSave(entry.key, selectedModel)}
-            disabled={isSaving || !selectedModel}
+            onClick={() => onSave(entry.key, savedValue)}
+            disabled={isSaving || (!savedValue && !allowDefault)}
             className="ml-4 shrink-0"
           >
             {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
@@ -126,6 +139,9 @@ function ModelSelector({
             <SelectValue placeholder={isLoading || isRefetching ? 'Loading models…' : 'Select model…'} />
           </SelectTrigger>
           <SelectContent>
+            {allowDefault && (
+              <SelectItem value={USE_DEFAULT}>Use default model</SelectItem>
+            )}
             {models.map((m) => (
               <SelectItem key={m} value={m}>{m}</SelectItem>
             ))}
@@ -143,6 +159,16 @@ function ModelSelector({
             : <RefreshCw className="h-4 w-4" />}
         </Button>
       </div>
+      {error && (
+        <p className="text-xs text-destructive">
+          Could not load models: {(error as Error).message}
+        </p>
+      )}
+      {!error && !isLoading && !isRefetching && models.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          No models returned. Check the API key above.
+        </p>
+      )}
     </div>
   );
 }
@@ -240,7 +266,7 @@ function ConfigGroup({
           {entries.map((entry, i) => (
             <div key={entry.key}>
               {i > 0 && <Separator className="mb-5" />}
-              {entry.key === 'model' ? (
+              {MODEL_KEYS.includes(entry.key) ? (
                 <ModelSelector
                   entry={entry}
                   onSave={onSave}
@@ -360,7 +386,7 @@ export default function AdminPage() {
   const configMap = new Map(configs?.map((c) => [c.key, c]) ?? []);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 p-6">
+    <div className="max-w-7xl mx-auto space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Admin</h1>
@@ -388,6 +414,9 @@ export default function AdminPage() {
         </TabsList>
 
         <TabsContent value="config" className="space-y-4 mt-4">
+          {/* Keys first: an unset OpenAI key is why the model list stays empty */}
+          <ApiKeysPanel />
+
           {configLoading ? (
             <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>
           ) : (

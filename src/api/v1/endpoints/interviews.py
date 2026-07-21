@@ -9,6 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from src.core.database import get_db
+from src.core.session_modes import (
+    allows_code,
+    is_english_practice,
+    normalize_session_mode,
+)
 from src.models.user import User
 from src.models.resume import Resume
 from src.models.interview import Interview
@@ -21,7 +26,9 @@ from src.schemas.interview import (
     InterviewSubmitCode,
 )
 from src.services.orchestrator.langgraph_orchestrator import LangGraphInterviewOrchestrator
+from src.services.orchestrator.english_practice import build_session_state
 from src.services.data.state_manager import interview_to_state, state_to_interview
+from src.services.data.code_practice_starters import build_sandbox_seed
 from src.services.analysis.feedback_generator import FeedbackGenerator
 from src.services.analytics.analytics_service import InterviewAnalytics
 from src.services.voice.livekit_service import LiveKitService
@@ -67,6 +74,12 @@ async def create_interview(
         job_description=interview_data.job_description,
         conversation_history=[],
         turn_count=0,
+        # Explicit mode wins; older clients that omit it fall back to marker inference
+        session_mode=normalize_session_mode(
+            interview_data.session_mode,
+            interview_data.job_description,
+            interview_data.title,
+        ),
     )
 
     db.add(interview)
@@ -151,6 +164,17 @@ async def start_interview(
     interview.status = "in_progress"
     interview.started_at = datetime.utcnow()
 
+    # Seed sandbox with problem-specific starter code — never for English practice,
+    # which is a voice-only conversation session.
+    sandbox_seed = None
+    if allows_code(interview.session_mode):
+        sandbox_seed = build_sandbox_seed(
+            interview.job_description, interview.title)
+    if sandbox_seed:
+        resume_context = dict(interview.resume_context or {})
+        resume_context["_sandbox"] = sandbox_seed
+        interview.resume_context = resume_context
+
     await db.commit()
     await db.refresh(interview)
 
@@ -158,7 +182,8 @@ async def start_interview(
         f"Interview {interview.id} marked as in_progress. "
         f"LangGraph will handle greeting automatically on first turn.")
 
-    return _interview_to_response(interview)
+    response_state = {"sandbox": sandbox_seed} if sandbox_seed else None
+    return _interview_to_response(interview, state=response_state)
 
 
 @router.post("/respond", response_model=InterviewResponse)
@@ -333,6 +358,12 @@ async def submit_code_to_interview(
             detail="Interview is not in progress",
         )
 
+    if is_english_practice(interview.session_mode):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This is an English conversation session. Code submission is not available.",
+        )
+
     try:
         orchestrator = LangGraphInterviewOrchestrator()
         orchestrator.set_db_session(db)
@@ -393,10 +424,15 @@ async def update_sandbox_code(
             detail="Interview is not in progress",
         )
 
+    if is_english_practice(interview.session_mode):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This is an English conversation session. The code sandbox is not available.",
+        )
+
     try:
         orchestrator = LangGraphInterviewOrchestrator()
         orchestrator.set_db_session(db)
-        state = interview_to_state(interview)
 
         # Convert interview to state (pass user for name extraction)
         state = interview_to_state(interview, user=user)
@@ -461,6 +497,12 @@ async def get_interview_feedback(
             # Check if it's comprehensive feedback (has overall_score)
             if "overall_score" in interview.feedback:
                 return interview.feedback
+
+        # English practice is scored on language, not engineering signal. Never
+        # fall through to the interview generator here — it would replace the
+        # language feedback with a code_quality rubric.
+        if is_english_practice(interview.session_mode):
+            return await _generate_english_feedback(interview, db)
 
         # Generate new comprehensive feedback
         feedback_generator = FeedbackGenerator()
@@ -732,6 +774,61 @@ async def delete_interview(
         )
 
 
+@router.get("/{interview_id}/session-state")
+async def get_session_state(
+    interview_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Live panel state for an English practice session.
+
+    Polled during the session, so it is computed from stored data only — no LLM
+    calls and no extra tokens.
+    """
+    result = await db.execute(
+        select(Interview).where(
+            Interview.id == interview_id, Interview.user_id == user.id
+        )
+    )
+    interview = result.scalar_one_or_none()
+
+    if not interview:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found",
+        )
+
+    if not is_english_practice(interview.session_mode):
+        return {"session_mode": normalize_session_mode(
+            interview.session_mode, interview.job_description, interview.title)}
+
+    return build_session_state(
+        job_description=interview.job_description,
+        conversation_history=interview.conversation_history,
+        turn_count=interview.turn_count,
+        status=interview.status,
+    )
+
+
+async def _generate_english_feedback(interview: Interview, db: AsyncSession) -> dict:
+    """Build language feedback for a completed English practice session.
+
+    Used when the session ended without passing through the evaluation node
+    (for example the user hit "complete" mid-scenario), so no feedback exists yet.
+    """
+    orchestrator = LangGraphInterviewOrchestrator()
+    orchestrator.set_db_session(db)
+    node_handler = orchestrator._get_node_handler()
+
+    state = interview_to_state(interview)
+    updates = await node_handler._english_evaluation(state)
+    feedback = updates.get("feedback") or {}
+
+    interview.feedback = feedback
+    await db.commit()
+    return feedback
+
+
 def _interview_to_response(interview: Interview, state: dict | None = None) -> InterviewResponse:
     """Convert Interview model to InterviewResponse schema.
 
@@ -761,6 +858,11 @@ def _interview_to_response(interview: Interview, state: dict | None = None) -> I
         resume_id=interview.resume_id,
         title=interview.title,
         status=interview.status,
+        session_mode=normalize_session_mode(
+            getattr(interview, "session_mode", None),
+            interview.job_description,
+            interview.title,
+        ),
         conversation_history=interview.conversation_history,
         resume_context=interview.resume_context,
         feedback=interview.feedback,

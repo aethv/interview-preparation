@@ -11,6 +11,7 @@ import { Code, Play, Loader2, CheckCircle2, XCircle, Copy, Download, Send } from
 import { toast } from 'sonner';
 import dynamic from 'next/dynamic';
 import { interviewsApi, Interview } from '@/lib/api/interviews';
+import { resolveInitialCode } from '@/lib/code-starters';
 
 // Dynamically import Monaco Editor to avoid SSR issues
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
@@ -44,6 +45,7 @@ export function CodeSandbox({ interviewId }: CodeSandboxProps) {
   const [exerciseDescription, setExerciseDescription] = useState<string | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastCodeRef = useRef<string>('');
+  const starterTemplatesRef = useRef<Record<string, string> | null>(null);
 
   // Fetch interview to get exercise if available
   const { data: interview } = useQuery<Interview>({
@@ -60,66 +62,22 @@ export function CodeSandbox({ interviewId }: CodeSandboxProps) {
   
   useEffect(() => {
     if (interview && interview.status === 'in_progress' && !codeInitialized) {
-      // Check if there's an exercise in conversation history
-      // Look for sandbox_guidance messages with exercise metadata
-      const exerciseMessage = interview.conversation_history?.find(
-        (msg) => msg.role === 'assistant' && 
-                 (msg.metadata?.type === 'sandbox_guidance' || 
-                  msg.content?.toLowerCase().includes('exercise') ||
-                  msg.content?.toLowerCase().includes('sandbox'))
-      );
-      
-      const starterCode: Record<string, string> = {
-        python: `def fibonacci(n):
-    """Calculate the nth Fibonacci number."""
-    if n <= 1:
-        return n
-    a, b = 0, 1
-    for _ in range(2, n + 1):
-        a, b = b, a + b
-    return b
-
-# Test the function
-print(fibonacci(10))`,
-        javascript: `function fibonacci(n) {
-  if (n <= 1) return n;
-  let a = 0, b = 1;
-  for (let i = 2; i <= n; i++) {
-    [a, b] = [b, a + b];
-  }
-  return b;
-}
-
-// Test the function
-console.log(fibonacci(10));`,
-        java: `public class Solution {
-    public static int fibonacci(int n) {
-        if (n <= 1) return n;
-        int a = 0, b = 1;
-        for (int i = 2; i <= n; i++) {
-            int tmp = a + b;
-            a = b;
-            b = tmp;
-        }
-        return b;
-    }
-
-    public static void main(String[] args) {
-        System.out.println(fibonacci(10));
-    }
-}`,
-      };
-      const defaultCode = starterCode[language] ?? starterCode.python;
-      setCode(defaultCode);
-      lastCodeRef.current = defaultCode;
+      const { code: initialCode, description, starters } = resolveInitialCode(interview, language);
+      starterTemplatesRef.current = starters;
+      setCode(initialCode);
+      lastCodeRef.current = initialCode;
+      if (description) {
+        setExerciseDescription(description);
+      }
       setCodeInitialized(true);
     }
-    
-    // Reset when interview changes
+
+    // Reset when interview changes or ends
     if (interview?.status !== 'in_progress') {
       setCodeInitialized(false);
+      starterTemplatesRef.current = null;
     }
-  }, [interview?.status, interview?.id, codeInitialized]);
+  }, [interview?.status, interview?.id, interview?.job_description, interview?.sandbox, interview?.title, codeInitialized]);
 
   // Poll for code changes when sandbox is active
   useEffect(() => {
@@ -275,20 +233,9 @@ console.log(fibonacci(10));`,
             <div className="flex items-center space-x-2">
               <Select value={language} onValueChange={(lang) => {
                 setLanguage(lang);
-                // Swap to starter template for new language if editor still has a starter template
-                const starterTemplates: Record<string, string> = {
-                  python: 'def fibonacci',
-                  javascript: 'function fibonacci',
-                  java: 'public class Solution',
-                };
-                const isStarter = Object.values(starterTemplates).some(t => code.trimStart().startsWith(t));
-                if (isStarter) {
-                  const newStarters: Record<string, string> = {
-                    python: `def fibonacci(n):\n    if n <= 1:\n        return n\n    a, b = 0, 1\n    for _ in range(2, n + 1):\n        a, b = b, a + b\n    return b\n\nprint(fibonacci(10))`,
-                    javascript: `function fibonacci(n) {\n  if (n <= 1) return n;\n  let a = 0, b = 1;\n  for (let i = 2; i <= n; i++) [a, b] = [b, a + b];\n  return b;\n}\n\nconsole.log(fibonacci(10));`,
-                    java: `public class Solution {\n    public static int fibonacci(int n) {\n        if (n <= 1) return n;\n        int a = 0, b = 1;\n        for (int i = 2; i <= n; i++) { int t = a + b; a = b; b = t; }\n        return b;\n    }\n\n    public static void main(String[] args) {\n        System.out.println(fibonacci(10));\n    }\n}`,
-                  };
-                  setCode(newStarters[lang] ?? '');
+                const templates = starterTemplatesRef.current;
+                if (templates && Object.values(templates).includes(code)) {
+                  setCode(templates[lang] ?? templates.python ?? '');
                 }
               }}>
                 <SelectTrigger className="w-[140px]">

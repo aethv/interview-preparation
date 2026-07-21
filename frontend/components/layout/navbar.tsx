@@ -3,6 +3,7 @@
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useSessionStore } from '@/lib/store/session-store';
 import {
   LayoutDashboard,
   MessageSquare,
@@ -25,6 +26,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, exact: true },
@@ -38,6 +40,9 @@ export function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout, isAuthenticated } = useAuthStore();
+  // While a voice session is live, navigation is locked: leaving mid-session
+  // strands the LiveKit room and the agent keeps running.
+  const sessionActive = useSessionStore((s) => s.isActive);
 
   // Hide navbar on auth pages
   if (pathname?.startsWith('/login') || pathname?.startsWith('/register')) {
@@ -102,7 +107,15 @@ export function Navbar() {
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between px-4">
         {/* Logo */}
-        <Link href="/dashboard" className="flex items-center space-x-2">
+        <Link
+          href={sessionActive ? '#' : '/dashboard'}
+          onClick={(e) => { if (sessionActive) e.preventDefault(); }}
+          aria-disabled={sessionActive}
+          className={cn(
+            'flex items-center space-x-2',
+            sessionActive && 'pointer-events-none opacity-50'
+          )}
+        >
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <MessageSquare className="h-5 w-5 text-primary-foreground" />
           </div>
@@ -116,12 +129,21 @@ export function Navbar() {
             return (
               <Link
                 key={item.name}
-                href={item.href}
+                href={sessionActive ? '#' : item.href}
+                onClick={(e) => {
+                  if (sessionActive) {
+                    e.preventDefault();
+                    toast.info('Pause or complete the session before leaving.');
+                  }
+                }}
+                aria-disabled={sessionActive}
+                title={sessionActive ? 'Finish or pause your session first' : undefined}
                 className={cn(
                   'flex items-center space-x-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                   isActive
                     ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                  sessionActive && !isActive && 'opacity-40 cursor-not-allowed hover:bg-transparent'
                 )}
               >
                 <item.icon className="h-4 w-4" />

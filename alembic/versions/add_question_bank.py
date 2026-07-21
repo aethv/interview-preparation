@@ -39,13 +39,33 @@ def upgrade() -> None:
             sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         )
 
-    # Convert embedding column to vector(1536) — idempotent (no-op if already vector)
-    try:
-        conn.execute(sa.text(
-            "ALTER TABLE question_bank ALTER COLUMN embedding TYPE vector(1536) USING embedding::vector"
-        ))
-    except Exception:
-        pass  # already vector type
+    # Convert embedding column to vector(1536) — skipped if already converted.
+    #
+    # This must NOT be a bare try/except around the ALTER: catching the Python
+    # exception does not clear the aborted Postgres transaction, so every later
+    # statement (including alembic's own UPDATE alembic_version) then fails with
+    # InFailedSQLTransactionError. Check the current type instead, and isolate
+    # the ALTER in a SAVEPOINT so a failure cannot poison the outer transaction.
+    current_type = conn.execute(sa.text(
+        """
+        SELECT udt_name
+        FROM information_schema.columns
+        WHERE table_name = 'question_bank' AND column_name = 'embedding'
+        """
+    )).scalar()
+
+    if current_type is None:
+        # The column is absent when the table was created by
+        # Base.metadata.create_all: the ORM model deliberately does not map
+        # `embedding`, so create_all builds the table without it and every
+        # similarity search then fails.
+        op.execute("ALTER TABLE question_bank ADD COLUMN embedding vector(1536)")
+    elif current_type != 'vector':
+        with conn.begin_nested():
+            conn.execute(sa.text(
+                "ALTER TABLE question_bank "
+                "ALTER COLUMN embedding TYPE vector(1536) USING embedding::vector"
+            ))
 
 
 def downgrade() -> None:

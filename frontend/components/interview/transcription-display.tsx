@@ -5,8 +5,13 @@ import { Room, RoomEvent, TranscriptionSegment, ParticipantEvent } from 'livekit
 import { Card, CardContent } from '@/components/ui/card';
 import { User, UserCheck } from 'lucide-react';
 
+// Internal marker for "this message came from the agent"; the visible label is a prop.
+const AGENT_SPEAKER = 'Interviewer';
+
 interface TranscriptionDisplayProps {
   room: Room | null;
+  /** Label for the AI speaker. "Interviewer" is wrong in a practice session. */
+  agentLabel?: string;
 }
 
 interface TranscriptionMessage {
@@ -17,7 +22,7 @@ interface TranscriptionMessage {
   isFinal: boolean;
 }
 
-export function TranscriptionDisplay({ room }: TranscriptionDisplayProps) {
+export function TranscriptionDisplay({ room, agentLabel = 'Interviewer' }: TranscriptionDisplayProps) {
   const [messages, setMessages] = useState<TranscriptionMessage[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -55,7 +60,7 @@ export function TranscriptionDisplay({ room }: TranscriptionDisplayProps) {
         if (speakerName.toLowerCase().includes('agent') || 
             speakerName.toLowerCase().includes('ai') ||
             speakerName.toLowerCase().includes('interviewer')) {
-          speakerName = 'Interviewer';
+          speakerName = AGENT_SPEAKER;
         }
         
         setMessages((prev) => {
@@ -140,14 +145,14 @@ export function TranscriptionDisplay({ room }: TranscriptionDisplayProps) {
             </p>
           ) : (
             messages.map((message) => {
-              const isInterviewer = message.speaker === 'Interviewer' ||
+              const isInterviewer = message.speaker === AGENT_SPEAKER ||
                                    message.speaker.toLowerCase().includes('interviewer') ||
                                    message.speaker.toLowerCase().includes('agent') ||
                                    message.speaker.toLowerCase().includes('ai');
               const isUser = message.speaker === room?.localParticipant?.name || 
                            message.speaker === room?.localParticipant?.identity;
               
-              const displayName = isUser ? 'You' : (isInterviewer ? 'Interviewer' : message.speaker);
+              const displayName = isUser ? 'You' : (isInterviewer ? agentLabel : message.speaker);
               
               return (
                 <div

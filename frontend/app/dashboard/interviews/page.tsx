@@ -23,7 +23,7 @@ export default function InterviewsPage() {
   const queryClient = useQueryClient();
 
   // Fetch interviews
-  const { data: interviews, isLoading } = useQuery<Interview[]>({
+  const { data: interviews, isLoading, error, refetch } = useQuery<Interview[]>({
     queryKey: ['interviews'],
     queryFn: () => interviewsApi.list(),
   });
@@ -201,7 +201,18 @@ export default function InterviewsPage() {
         </Dialog>
       </div>
 
-      {isLoading ? (
+      {error ? (
+        <Card className="border-destructive/40">
+          <CardContent className="py-8 text-center space-y-3">
+            <XCircle className="h-8 w-8 text-destructive mx-auto" />
+            <div>
+              <p className="font-medium">Could not load your interviews</p>
+              <p className="text-sm text-muted-foreground">{(error as Error).message}</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>Try again</Button>
+          </CardContent>
+        </Card>
+      ) : isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
             <Card key={i}>

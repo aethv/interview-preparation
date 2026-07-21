@@ -18,8 +18,13 @@ import {
 } from '@/components/ui/select';
 import { interviewsApi } from '@/lib/api/interviews';
 import {
-  practiceApi, EnglishTopic, CodeTopic,
+  buildEnglishPracticeJobDescription,
+  buildCodePracticeJobDescription,
+} from '@/lib/practice-session-prompts';
+import {
+  practiceApi, EnglishTopic, CodeTopic, TopicScene,
 } from '@/lib/api/practice_topics';
+import { ScenePicker } from '@/components/practice/scene-picker';
 
 // ── Skill icons ────────────────────────────────────────────────────────────────
 
@@ -86,6 +91,12 @@ function EnglishTopicCard({ topic, onStart, starting }: {
           </p>
         )}
 
+        {topic.scenes?.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {topic.scenes.length} scene{topic.scenes.length !== 1 ? 's' : ''} to choose from
+          </p>
+        )}
+
         <Button
           className="w-full"
           size="sm"
@@ -97,7 +108,7 @@ function EnglishTopicCard({ topic, onStart, starting }: {
           ) : (
             <Play className="h-3.5 w-3.5 mr-2" />
           )}
-          Start Practice
+          {topic.scenes?.length ? 'Choose a scene' : 'Start Practice'}
         </Button>
       </CardContent>
     </Card>
@@ -196,13 +207,16 @@ function EnglishPracticeTab() {
     placeholderData: prev => prev,
   });
 
+  const [pickerTopic, setPickerTopic] = useState<EnglishTopic | null>(null);
+
   const startMutation = useMutation({
-    mutationFn: (topic: EnglishTopic) =>
+    mutationFn: ({ topic, scene }: { topic: EnglishTopic; scene: TopicScene | null }) =>
       interviewsApi.create({
-        title: `English: ${topic.title}`,
-        job_description: `[ENGLISH PRACTICE]\nSkill: ${topic.skill_focus} | Level: ${topic.level}\n\n${topic.scenario_prompt}${topic.key_vocabulary ? `\n\nKey vocabulary: ${topic.key_vocabulary}` : ''}${topic.evaluation_criteria ? `\n\nEvaluation criteria: ${topic.evaluation_criteria}` : ''}`,
+        title: scene ? `English: ${topic.title} — ${scene.title}` : `English: ${topic.title}`,
+        job_description: buildEnglishPracticeJobDescription(topic, scene),
+        session_mode: 'english_practice',
       }),
-    onSuccess: (interview, topic) => {
+    onSuccess: (interview, { topic }) => {
       toast.success(`Starting "${topic.title}"…`);
       router.push(`/dashboard/interviews/${interview.id}`);
     },
@@ -212,9 +226,19 @@ function EnglishPracticeTab() {
     },
   });
 
+  // Topics with scenes ask the learner to choose first; the rest start straight away
   const handleStart = (topic: EnglishTopic) => {
+    if (topic.scenes?.length) {
+      setPickerTopic(topic);
+      return;
+    }
     setStartingId(topic.id);
-    startMutation.mutate(topic);
+    startMutation.mutate({ topic, scene: null });
+  };
+
+  const handleStartScene = (topic: EnglishTopic, scene: TopicScene | null) => {
+    setStartingId(topic.id);
+    startMutation.mutate({ topic, scene });
   };
 
   const skillOptions = meta?.skill_focus_options ?? [];
@@ -297,6 +321,14 @@ function EnglishPracticeTab() {
           </Button>
         </div>
       )}
+
+      <ScenePicker
+        topic={pickerTopic}
+        open={pickerTopic !== null}
+        onOpenChange={(open) => { if (!open) setPickerTopic(null); }}
+        onStart={handleStartScene}
+        starting={startMutation.isPending}
+      />
     </div>
   );
 }
@@ -339,7 +371,8 @@ function CodePracticeTab() {
     mutationFn: (topic: CodeTopic) =>
       interviewsApi.create({
         title: `Code: ${topic.title}`,
-        job_description: `[CODE PRACTICE]\nCategory: ${topic.category} | Difficulty: ${topic.difficulty} | Languages: ${topic.languages}\n\n${topic.problem_statement}${topic.discussion_hints ? `\n\nDiscussion hints (JSON): ${topic.discussion_hints}` : ''}${topic.review_rubric ? `\n\nReview rubric (JSON): ${topic.review_rubric}` : ''}${topic.reference_solution ? `\n\nReference solution (agent-only): ${topic.reference_solution}` : ''}`,
+        job_description: buildCodePracticeJobDescription(topic),
+        session_mode: 'code_practice',
       }),
     onSuccess: (interview, topic) => {
       toast.success(`Starting "${topic.title}"…`);

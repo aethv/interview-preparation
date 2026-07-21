@@ -102,16 +102,35 @@ async def bootstrap_resources(ctx: JobContext, interview_id: int) -> AgentResour
         # Initialize database session from connection pool
         resources.db = AsyncSessionLocal()
 
+        # Warm the secret cache before any vendor client is built, so an
+        # admin-managed key applies in the agent process too.
+        try:
+            from src.services.data.secret_service import load_secrets
+            await load_secrets(resources.db)
+        except Exception as e:
+            logger.warning(f"Could not load managed secrets, using environment: {e}")
+
         # Initialize orchestrator LLM with two-phase initialization pattern
         # This avoids blocking the LiveKit handshake with heavy imports
         resources.orchestrator_llm = OrchestratorLLM(interview_id)
         await resources.orchestrator_llm.init(resources.db)
 
+        # The LiveKit OpenAI plugins read OPENAI_API_KEY from the environment by
+        # default, which would ignore a key managed in Admin. Pass it explicitly.
+        from src.core.secrets import openai_api_key
+        api_key = openai_api_key()
+        if not api_key:
+            logger.error(
+                "No OpenAI API key available (checked Admin secrets and "
+                "OPENAI_API_KEY). Speech-to-text and text-to-speech will not work."
+            )
+
         # Initialize TTS with graceful error handling
         try:
             resources.tts = openai.TTS(
                 voice=settings.OPENAI_TTS_VOICE or "alloy",
-                model=settings.OPENAI_TTS_MODEL or "tts-1-hd"
+                model=settings.OPENAI_TTS_MODEL or "tts-1-hd",
+                api_key=api_key or None,
             )
         except Exception as e:
             logger.exception("TTS creation failed, will retry later")
@@ -119,7 +138,7 @@ async def bootstrap_resources(ctx: JobContext, interview_id: int) -> AgentResour
 
         # Initialize STT with graceful error handling
         try:
-            resources.stt = openai.STT()
+            resources.stt = openai.STT(api_key=api_key or None)
         except Exception as e:
             logger.exception("STT creation failed, will retry later")
             resources.stt = None

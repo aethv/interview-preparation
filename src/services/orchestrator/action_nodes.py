@@ -12,8 +12,18 @@ from typing import TYPE_CHECKING
 from datetime import datetime
 from openai import AsyncOpenAI
 
+from src.core.session_modes import allows_code, is_english_practice
 from src.services.execution.sandbox_service import SandboxService, Language as SandboxLanguage
 from src.services.analysis.code_metrics import get_code_metrics
+from src.services.orchestrator.english_practice import (
+    ENGLISH_PARTNER_RULES,
+    EnglishFeedback,
+    EnglishTurn,
+    build_evaluation_prompt as build_english_evaluation_prompt,
+    build_greeting_prompt as build_english_greeting_prompt,
+    build_spoken_feedback,
+    build_turn_prompt as build_english_turn_prompt,
+)
 from src.services.orchestrator.types import InterviewState, QuestionRecord, QuestionGeneration
 from src.services.orchestrator.context_builders import (
     build_resume_context, build_conversation_context, build_job_context
@@ -23,7 +33,7 @@ from src.services.orchestrator.constants import (
     get_sandbox_poll_interval, get_sandbox_stuck_threshold,
     get_temperature_creative, get_temperature_balanced,
     get_temperature_analytical, get_temperature_question,
-    get_model,
+    get_model, get_conversation_model, get_evaluation_model,
 )
 logger = logging.getLogger(__name__)
 
@@ -79,6 +89,10 @@ class ActionNodeMixin:
                         "phase": "intro",
                         "next_message": msg.get("content"),
                     }
+
+        # English practice uses a conversation-partner persona, never an interviewer one
+        if is_english_practice(state.get("session_mode")):
+            return await self._english_greeting(state)
 
         resume_context = build_resume_context(state)
         job_context = build_job_context(state)
@@ -151,11 +165,90 @@ class ActionNodeMixin:
                 "next_message": default_greeting,
             }
 
+    async def _english_greeting(self, state: InterviewState) -> InterviewState:
+        """Open an English practice session in character for the chosen scenario."""
+        try:
+            greeting = await self.llm_helper.call_llm_creative(
+                system_prompt=f"{get_system_prompt()}\n\n{ENGLISH_PARTNER_RULES}",
+                user_prompt=build_english_greeting_prompt(state),
+            )
+        except Exception as e:
+            logger.error(f"English greeting failed: {e}", exc_info=True)
+            greeting = (
+                "Hi! Good to see you. Let's practise some English together. "
+                "How has your day been so far?"
+            )
+
+        return {
+            "last_node": "greeting",
+            "phase": "intro",
+            "next_message": greeting,
+        }
+
+    async def _english_turn(self, state: InterviewState, node_name: str) -> InterviewState:
+        """Produce one in-role conversational turn for an English practice session.
+
+        Backs both question_node and followup_node in english_practice mode: the
+        distinction between "new question" and "follow-up" is not meaningful in a
+        roleplay, the partner simply responds and keeps the scene moving.
+        """
+        conversation_context = build_conversation_context(
+            state, self.interview_logger)
+
+        last_answer = state.get("last_response", "") or ""
+        if not last_answer:
+            for msg in reversed(state.get("conversation_history", [])):
+                if msg.get("role") == "user":
+                    last_answer = msg.get("content", "")
+                    break
+
+        metadata: dict | None = None
+        try:
+            turn = await self.llm_helper.call_llm_with_instructor(
+                system_prompt=f"{get_system_prompt()}\n\n{ENGLISH_PARTNER_RULES}",
+                user_prompt=build_english_turn_prompt(
+                    state, last_answer, conversation_context),
+                response_model=EnglishTurn,
+                temperature=get_temperature_creative(),
+                model=get_conversation_model(),
+                role="conversation",
+            )
+            message = turn.message
+
+            # Rides along on the turn we were generating anyway — no extra call.
+            if turn.correction or turn.vocabulary_used or turn.native_language_used:
+                metadata = {"type": "english_turn"}
+                if turn.correction:
+                    metadata["correction"] = turn.correction.model_dump()
+                if turn.vocabulary_used:
+                    metadata["vocabulary_used"] = turn.vocabulary_used
+                if turn.native_language_used:
+                    # Marks where the learner ran out of English — the most
+                    # useful thing to show them afterwards.
+                    metadata["native_language"] = {
+                        "said": last_answer,
+                        "english_version": turn.english_version,
+                    }
+        except Exception as e:
+            logger.error(f"English turn failed: {e}", exc_info=True)
+            message = "That's interesting. Tell me a bit more about that."
+
+        return {
+            "last_node": node_name,
+            "phase": "exploration",
+            "current_question": message,
+            "next_message": message,
+            "next_message_metadata": metadata,
+        }
+
     async def question_node(self, state: InterviewState) -> InterviewState:
         """Generate adaptive question based on resume exploration.
 
         Returns partial state update. conversation_history is written by finalize_turn_node.
         """
+        if is_english_practice(state.get("session_mode")):
+            return await self._english_turn(state, "question")
+
         conversation_context = build_conversation_context(
             state, self.interview_logger)
         resume_context = build_resume_context(state)
@@ -229,6 +322,8 @@ class ActionNodeMixin:
                 user_prompt=prompt,
                 response_model=QuestionGeneration,
                 temperature=get_temperature_question(),
+                model=get_conversation_model(),
+                role="conversation",
             )
 
             question_text = response.question.strip()
@@ -292,6 +387,9 @@ class ActionNodeMixin:
 
         Returns partial state update. conversation_history is written by finalize_turn_node.
         """
+        if is_english_practice(state.get("session_mode")):
+            return await self._english_turn(state, "followup")
+
         last_question = state.get("current_question", "")
         last_answer = state.get("last_response", "")
 
@@ -365,6 +463,10 @@ class ActionNodeMixin:
 
         Returns partial state update. conversation_history is written by finalize_turn_node.
         """
+        # English sessions are scored on language, not on engineering signal,
+        # so they bypass the interview feedback generator entirely.
+        if is_english_practice(state.get("session_mode")):
+            return await self._english_evaluation(state)
 
         try:
             topics_covered = state.get("topics_covered", [])
@@ -397,6 +499,59 @@ class ActionNodeMixin:
                 },
             }
 
+    async def _english_evaluation(self, state: InterviewState) -> InterviewState:
+        """Language feedback for an English practice session (spoken + stored).
+
+        Produces a structured EnglishFeedback rather than free text: the stored
+        dict carries overall_score, which the feedback endpoint uses to recognise
+        already-generated feedback and analytics uses to chart progress.
+        """
+        transcript = "\n".join(
+            f"{msg.get('role', 'unknown').upper()}: {msg.get('content', '')}"
+            for msg in state.get("conversation_history", [])
+            if msg.get("role") in ("user", "assistant")
+        )
+
+        try:
+            feedback = await self.llm_helper.call_llm_with_instructor(
+                system_prompt=(
+                    f"{ENGLISH_PARTNER_RULES}\n\n"
+                    "You are now giving end-of-session feedback, so you may step "
+                    "out of the roleplay. Stay encouraging, specific and concrete."
+                ),
+                user_prompt=build_english_evaluation_prompt(state, transcript),
+                response_model=EnglishFeedback,
+                temperature=get_temperature_analytical(),
+                model=get_evaluation_model(),
+                role="evaluation",
+            )
+            feedback_dict = feedback.model_dump()
+            feedback_dict["type"] = "english_practice"
+            feedback_dict["turn_count"] = state.get("turn_count", 0)
+            spoken = build_spoken_feedback(feedback)
+        except Exception as e:
+            logger.error(f"English evaluation failed: {e}", exc_info=True)
+            spoken = (
+                "Nice work today. Your ideas came across clearly. "
+                "Keep practising and we'll pick up where we left off."
+            )
+            # Keep overall_score present even on failure so downstream consumers
+            # treat this as real feedback instead of regenerating interview feedback.
+            feedback_dict = {
+                "type": "english_practice",
+                "summary": spoken,
+                "overall_score": 0.5,
+                "turn_count": state.get("turn_count", 0),
+                "generation_failed": True,
+            }
+
+        return {
+            "last_node": "evaluation",
+            "phase": "closing",
+            "next_message": spoken,
+            "feedback": feedback_dict,
+        }
+
     async def closing_node(self, state: InterviewState) -> InterviewState:
         """Generate closing message.
 
@@ -404,6 +559,25 @@ class ActionNodeMixin:
         """
         conversation_summary = build_conversation_context(
             state, self.interview_logger)
+
+        if is_english_practice(state.get("session_mode")):
+            try:
+                closing = await self.llm_helper.call_llm_creative(
+                    system_prompt=f"{get_system_prompt()}\n\n{ENGLISH_PARTNER_RULES}",
+                    user_prompt=(
+                        "Close the English practice conversation in character. "
+                        "Thank them, mention one thing they said that you liked, "
+                        "and wish them well. Under 40 words. No grammar lecture.\n\n"
+                        f"Conversation:\n{conversation_summary}"
+                    ),
+                )
+            except Exception:
+                closing = "That was a great chat. Thanks for practising with me today. See you next time!"
+            return {
+                "last_node": "closing",
+                "phase": "closing",
+                "next_message": closing,
+            }
 
         prompt = f"""Generate a closing message for the interview.
 
@@ -435,6 +609,15 @@ class ActionNodeMixin:
 
         Returns partial state update.
         """
+        # Unreachable in english_practice via the graph; guarded anyway so a
+        # direct call from a future caller cannot introduce code into the session.
+        if not allows_code(state.get("session_mode")):
+            logger.warning(
+                "sandbox_guidance_node called in a non-code session "
+                f"({state.get('session_mode')}); falling back to conversation."
+            )
+            return await self._english_turn(state, "question")
+
         if self.interview_logger:
             self.interview_logger.log_state("sandbox_guidance", state)
 
@@ -526,6 +709,12 @@ class ActionNodeMixin:
 
     async def _should_provide_exercise(self, state: InterviewState) -> bool:
         """Determine if agent should provide a coding exercise."""
+        # English practice scenarios often mention "engineer", "developer" or a
+        # standup — those keywords used to trip the check below and produce a
+        # coding exercise in the middle of a conversation lesson.
+        if not allows_code(state.get("session_mode")):
+            return False
+
         active_request = state.get("active_user_request")
         if active_request and active_request.get("type") == "write_code":
             return True
@@ -627,6 +816,9 @@ class ActionNodeMixin:
 
         Returns state updates (no mutations). Used by polling endpoint.
         """
+        if not allows_code(state.get("session_mode")):
+            return {}
+
         updates: dict = {}
 
         if not state.get("sandbox", {}).get("is_active"):
@@ -689,6 +881,13 @@ class ActionNodeMixin:
 
         Returns partial state update. conversation_history is written by finalize_turn_node.
         """
+        if not allows_code(state.get("session_mode")):
+            logger.warning(
+                "code_review_node called in a non-code session "
+                f"({state.get('session_mode')}); ignoring the code and continuing."
+            )
+            return await self._english_turn(state, "followup")
+
         if self.interview_logger:
             self.interview_logger.log_state("code_review_start", state)
 
@@ -736,6 +935,8 @@ class ActionNodeMixin:
                     " You are a code reviewer. Analyze if submitted code matches the exercise.",
                     user_prompt=check_prompt,
                     temperature=get_temperature_analytical(),
+                    model=get_evaluation_model(),
+                    role="evaluation",
                 )
                 check_result = json.loads(check_result_json)
 

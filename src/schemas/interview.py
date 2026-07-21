@@ -14,6 +14,13 @@ class InterviewCreate(BaseModel):
     job_description: Optional[str] = Field(
         None, description="Job description/requirements for the position"
     )
+    session_mode: Optional[str] = Field(
+        None,
+        description=(
+            "interview | code_practice | english_practice. "
+            "Omitted values are inferred from the job description markers."
+        ),
+    )
 
 
 class InterviewResponse(BaseModel):
@@ -24,6 +31,7 @@ class InterviewResponse(BaseModel):
     resume_id: Optional[int]
     title: str
     status: str
+    session_mode: str = "interview"
     conversation_history: Optional[list[dict]] = None
     resume_context: Optional[dict] = None
     job_description: Optional[str] = None

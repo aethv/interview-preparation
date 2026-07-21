@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
@@ -10,22 +10,30 @@ import {
   Play,
   CheckCircle2,
   Loader2,
-  Video,
+  Mic,
   ArrowLeft,
   Volume2,
   RefreshCw,
   AlertCircle,
+  PauseCircle,
 } from 'lucide-react';
 import { interviewsApi, Interview } from '@/lib/api/interviews';
 import { voiceApi } from '@/lib/api/voice';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useSessionStore } from '@/lib/store/session-store';
 import dynamic from 'next/dynamic';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { CodeSandbox } from '@/components/interview/sandbox';
+import { EnglishSessionPanel } from '@/components/interview/english-session-panel';
+import { ConversationHistory } from '@/components/interview/conversation-history';
+import { MicLevelMeter } from '@/components/interview/mic-level-meter';
+import { showCodeEditor } from '@/lib/interview-session';
+import { getCameraPreference } from '@/lib/media-preferences';
 import { useLiveKitRoom } from '@/hooks/use-livekit-room';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { InterviewSkillCard } from '@/components/analytics/interview-skill-card';
+import { EnglishFeedbackCard, getEnglishBreakdown } from '@/components/analytics/english-feedback-card';
 
 // Dynamically import components to avoid SSR issues
 const AvatarWithWaves = dynamic(
@@ -57,6 +65,8 @@ export default function InterviewDetailPage() {
   const [agentReady, setAgentReady] = useState(false);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
+  const startSession = useSessionStore((st) => st.startSession);
+  const endSession = useSessionStore((st) => st.endSession);
 
   // Use the custom LiveKit hook - handles all connection lifecycle
   const {
@@ -65,6 +75,7 @@ export default function InterviewDetailPage() {
     isConnected,
     isConnecting,
     reconnect: reconnectRoom,
+    disconnect: disconnectRoom,
     error: roomError,
   } = useLiveKitRoom({
     token: voiceToken?.token || null,
@@ -89,22 +100,28 @@ export default function InterviewDetailPage() {
       console.log('Room connected, enabling tracks...');
       // Wait for engine to be ready
       await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Check camera permission before enabling
-      try {
-        const permissionStatus = await navigator.permissions.query({ 
-          name: 'camera' as PermissionName 
-        });
-        console.log('Camera permission status:', permissionStatus.state);
-        if (permissionStatus.state === 'denied') {
-          console.warn('⚠️ Camera permission denied - video may not work');
-          toast.warning('Camera permission denied. Please allow camera access in browser settings.');
+
+      // Sessions are audio-only unless the user has previously turned the camera
+      // on. The agent only subscribes to audio, so publishing video by default
+      // burns bandwidth and LiveKit minutes for nothing.
+      const wantsCamera = getCameraPreference();
+
+      if (wantsCamera) {
+        try {
+          const permissionStatus = await navigator.permissions.query({
+            name: 'camera' as PermissionName
+          });
+          console.log('Camera permission status:', permissionStatus.state);
+          if (permissionStatus.state === 'denied') {
+            console.warn('⚠️ Camera permission denied - video may not work');
+            toast.warning('Camera permission denied. Please allow camera access in browser settings.');
+          }
+        } catch (error) {
+          // Permissions API not supported or camera permission not queryable
+          console.log('Could not query camera permission:', error);
         }
-      } catch (error) {
-        // Permissions API not supported or camera permission not queryable
-        console.log('Could not query camera permission:', error);
       }
-      
+
       // Enable tracks with retry
       const enableTrackWithRetry = async (
         enableFn: () => Promise<unknown>,
@@ -132,6 +149,11 @@ export default function InterviewDetailPage() {
         'Microphone'
       ).catch(() => {});
 
+      if (!wantsCamera) {
+        console.log('Audio-only session (camera off by default)');
+        return;
+      }
+
       // Wait before enabling camera
       await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -140,7 +162,7 @@ export default function InterviewDetailPage() {
         () => room.localParticipant.setCameraEnabled(true),
         'Camera'
       );
-      
+
       if (!cameraEnabled) {
         console.error('Failed to enable camera after retries');
         toast.error('Failed to enable camera. Please check browser permissions.');
@@ -168,13 +190,60 @@ export default function InterviewDetailPage() {
 
   const canRespond = interview?.status === 'in_progress';
   const isCompleted = interview?.status === 'completed';
+  const hasCodeEditor = interview
+    ? showCodeEditor(interview.job_description, interview.title, interview.session_mode)
+    : true;
 
   // Fetch skill breakdown for completed interviews
+  // English sessions return language scores under their own keys, not the four
+  // interview skills, so they render a different card.
   const { data: skillBreakdown, isLoading: skillBreakdownLoading } = useQuery({
     queryKey: ['interview-skills', interviewId],
     queryFn: () => interviewsApi.getInterviewSkills(interviewId),
     enabled: isCompleted && !!interviewId,
   });
+
+  const englishBreakdown = getEnglishBreakdown(skillBreakdown);
+
+  // If the agent has not joined shortly after we connect, something is wrong
+  // server-side (usually a rejected API key). Ask the backend why, so the user
+  // gets a reason instead of an endless "preparing" spinner.
+  // A session is "live" once we are connected to the room; while it is, the
+  // navbar locks and leaving is blocked so the room is never stranded.
+  const sessionLive = canRespond && (isConnected || isConnecting);
+
+  useEffect(() => {
+    if (sessionLive) {
+      startSession(interviewId);
+    } else {
+      endSession();
+    }
+  }, [sessionLive, interviewId, startSession, endSession]);
+
+  // Always release the lock if this page unmounts for any reason
+  useEffect(() => () => endSession(), [endSession]);
+
+  // Native guard for tab close / reload, which React cannot intercept
+  useEffect(() => {
+    if (!sessionLive) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [sessionLive]);
+
+  const agentStalled = isConnected && !agentReady;
+  const { data: voiceHealth } = useQuery({
+    queryKey: ['voice-health'],
+    queryFn: () => voiceApi.health(),
+    enabled: agentStalled,
+    refetchInterval: 15000,
+    retry: false,
+  });
+  // "Interviewer" is wrong for a language practice session
+  const agentLabel = hasCodeEditor ? 'Interviewer' : 'Partner';
 
   // Get voice token mutation
   const voiceTokenMutation = useMutation({
@@ -226,6 +295,13 @@ export default function InterviewDetailPage() {
     mutationFn: () => interviewsApi.complete(interviewId),
     onSuccess: (data) => {
       queryClient.setQueryData(['interview', interviewId], data);
+      // Release the room and the navigation lock; otherwise the agent stays in
+      // the room and the navbar remains locked after the session has ended.
+      disconnectRoom();
+      setVoiceToken(null);
+      setShowVoiceVideo(false);
+      setAgentReady(false);
+      endSession();
       toast.success('Interview completed!');
     },
     onError: (error: any) => {
@@ -236,6 +312,18 @@ export default function InterviewDetailPage() {
   const handleStart = () => {
     setIsStarting(true);
     startMutation.mutate();
+  };
+
+  /** Leave the room but keep the interview in progress so it can be resumed. */
+  const handlePause = () => {
+    disconnectRoom();
+    setVoiceToken(null);
+    setShowVoiceVideo(false);
+    setAgentReady(false);
+    endSession();
+    // Stop the polling queries that belong to a live session
+    queryClient.cancelQueries({ queryKey: ['session-state', interviewId] });
+    toast.success('Session paused. Rejoin any time to continue.');
   };
 
   const handleComplete = () => {
@@ -324,12 +412,22 @@ export default function InterviewDetailPage() {
       {/* Top Navigation Bar with Buttons */}
       <div className="border-b border-border bg-background px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/dashboard/interviews">
+          {sessionLive ? (
+            <Button
+              variant="ghost" size="sm" disabled
+              title="Pause or complete the session first"
+            >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back
-            </Link>
-          </Button>
+            </Button>
+          ) : (
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/dashboard/interviews">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back
+              </Link>
+            </Button>
+          )}
           <div>
             <h1 className="text-lg font-semibold">{interview.title}</h1>
           </div>
@@ -366,8 +464,8 @@ export default function InterviewDetailPage() {
                 </>
               ) : (
                 <>
-                  <Video className="mr-2 h-4 w-4" />
-                  Enable Video
+                  <Mic className="mr-2 h-4 w-4" />
+                  Join Session
                 </>
               )}
             </Button>
@@ -411,6 +509,12 @@ export default function InterviewDetailPage() {
                 </Button>
               )}
             </>
+          )}
+          {sessionLive && (
+            <Button variant="outline" onClick={handlePause} title="Leave the room, keep the session">
+              <PauseCircle className="mr-2 h-4 w-4" />
+              Pause
+            </Button>
           )}
           {canRespond && (
             <Button
@@ -474,7 +578,9 @@ export default function InterviewDetailPage() {
           <Tabs defaultValue="skills" className="flex-1 flex flex-col min-h-0 w-full">
             <div className="border-b border-border px-4 pt-4">
               <TabsList>
-                <TabsTrigger value="skills">Skill Breakdown</TabsTrigger>
+                <TabsTrigger value="skills">
+                  {englishBreakdown ? 'Feedback' : 'Skill Breakdown'}
+                </TabsTrigger>
                 <TabsTrigger value="transcript">Transcript</TabsTrigger>
               </TabsList>
             </div>
@@ -488,6 +594,8 @@ export default function InterviewDetailPage() {
                     </CardContent>
                   </Card>
                 </div>
+              ) : englishBreakdown ? (
+                <EnglishFeedbackCard breakdown={englishBreakdown} />
               ) : skillBreakdown ? (
                 <InterviewSkillCard breakdown={skillBreakdown} />
               ) : (
@@ -502,47 +610,26 @@ export default function InterviewDetailPage() {
             </TabsContent>
             
             <TabsContent value="transcript" className="flex-1 overflow-y-auto p-4 mt-0">
-              <Card className="h-full">
-                <CardContent className="p-6">
-                  <h3 className="font-semibold mb-4">Interview Transcript</h3>
-                  <div className="space-y-4">
-                    {interview.conversation_history && interview.conversation_history.length > 0 ? (
-                      interview.conversation_history
-                        .filter(msg => msg.role !== 'system')
-                        .map((msg, idx) => (
-                          <div
-                            key={idx}
-                            className={`p-3 rounded-lg ${
-                              msg.role === 'user'
-                                ? 'bg-primary/10 ml-8'
-                                : 'bg-muted mr-8'
-                            }`}
-                          >
-                            <div className="font-semibold text-sm mb-1">
-                              {msg.role === 'user' ? 'You' : 'Interviewer'}
-                            </div>
-                            <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
-                            {msg.timestamp && (
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {new Date(msg.timestamp).toLocaleString()}
-                              </div>
-                            )}
-                          </div>
-                        ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground text-center py-4">
-                        No transcript available.
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="h-full">
+                <ConversationHistory
+                  messages={interview.conversation_history}
+                  agentLabel={agentLabel}
+                  title="Interview Transcript"
+                  emptyText="No transcript available."
+                />
+              </div>
             </TabsContent>
           </Tabs>
         ) : (
           <>
-            {/* Left Side - 1/3 width (Video Area + Transcription) */}
-            <div className="w-1/3 border-r border-border flex flex-col">
+            {/* Video + conversation (full width for English practice) */}
+            <div
+              className={
+                hasCodeEditor
+                  ? 'w-1/3 border-r border-border flex flex-col'
+                  : 'flex-1 min-w-0 flex flex-col'
+              }
+            >
               {/* Connection Status Banner */}
               {showVoiceVideo && roomState === 'disconnected' && (
                 <div className="bg-destructive/10 border-b border-destructive/20 px-4 py-3 flex items-center justify-between">
@@ -581,18 +668,39 @@ export default function InterviewDetailPage() {
               )}
               {/* Show "Interviewer is preparing" when connected but agent not ready yet */}
               {showVoiceVideo && isConnected && roomInstance && !agentReady && (
-                <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
-                    <span className="text-sm text-amber-700">Interviewer is preparing... Please wait a moment.</span>
+                voiceHealth && !voiceHealth.ok ? (
+                  <div className="bg-destructive/10 border-b border-destructive/20 px-4 py-2">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-destructive">
+                          {agentLabel} cannot start
+                        </p>
+                        {voiceHealth.problems.map((problem) => (
+                          <p key={problem} className="text-xs text-destructive/90">{problem}</p>
+                        ))}
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          An admin can fix this under Admin → Agent Config → API Keys.
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
+                      <span className="text-sm text-amber-700">{agentLabel} is preparing... Please wait a moment.</span>
+                    </div>
+                  </div>
+                )
               )}
               
               {canRespond && showVoiceVideo && voiceToken ? (
             <>
-              {/* Top Row: Participant Video | Interviewer Avatar side by side */}
-              <div className="h-64 p-4 grid grid-cols-2 gap-4">
+              {/* Top Row: Participant Video | Interviewer Avatar side by side.
+                  flex-none + overflow-hidden keeps the tiles inside their 16rem
+                  band instead of overlapping the transcript underneath. */}
+              <div className="flex-none h-64 p-4 grid grid-cols-2 gap-4 overflow-hidden">
                 {/* Left Column: Participant Video */}
                 <ParticipantVideo 
                   room={roomInstance} 
@@ -605,14 +713,25 @@ export default function InterviewDetailPage() {
               
               {/* Room Controls (Mute/Video) - Only show when connected */}
               {isConnected && (
-                <div className="px-4 pb-2">
+                <div className="px-4 pb-2 flex flex-col items-center gap-1">
                   <RoomControls room={roomInstance} />
+                  <MicLevelMeter room={roomInstance} />
                 </div>
               )}
               
-              {/* Bottom: Real-time Transcription */}
-              <div className="flex-1 min-h-0 p-4 pt-0">
-                <TranscriptionDisplay room={roomInstance} />
+              {/* Bottom: stored transcript (survives rejoin) + live captions */}
+              <div className="flex-1 min-h-0 p-4 pt-0 flex flex-col gap-3">
+                <div className="flex-1 min-h-0">
+                  <ConversationHistory
+                    messages={interview.conversation_history}
+                    agentLabel={agentLabel}
+                    autoScroll
+                    emptyText="The conversation will appear here as you talk."
+                  />
+                </div>
+                <div className="flex-none max-h-40 overflow-y-auto">
+                  <TranscriptionDisplay room={roomInstance} agentLabel={agentLabel} />
+                </div>
               </div>
             </>
           ) : (
@@ -623,13 +742,13 @@ export default function InterviewDetailPage() {
                   <CardContent className="text-center">
                     <p className="text-sm font-medium mb-2">Your Video</p>
                     <p className="text-xs text-muted-foreground">
-                      {canRespond ? 'Enable video to start' : 'Start interview to begin'}
+                      {canRespond ? 'Join the session to start (audio only)' : 'Start interview to begin'}
                     </p>
                   </CardContent>
                 </Card>
                     <Card className="flex items-center justify-center bg-primary/5">
                       <CardContent className="text-center">
-                        <p className="text-sm font-medium mb-2">Interviewer</p>
+                        <p className="text-sm font-medium mb-2">{agentLabel}</p>
                         <p className="text-xs text-muted-foreground">Will appear when connected</p>
                       </CardContent>
                     </Card>
@@ -648,43 +767,58 @@ export default function InterviewDetailPage() {
                       </>
                     ) : (
                       <>
-                        <Video className="mr-2 h-4 w-4" />
-                        Enable Video
+                        <Mic className="mr-2 h-4 w-4" />
+                        Join Session
                       </>
                     )}
                   </Button>
                 </div>
               )}
               
-              <div className="flex-1">
-                <Card>
-                  <CardContent className="h-full flex items-center justify-center">
-                    <p className="text-sm text-muted-foreground text-center">
-                      Transcription will appear here once the interview starts
-                    </p>
-                  </CardContent>
-                </Card>
+              {/* Rejoining a paused session must show what was already said,
+                  which live LiveKit transcription cannot do. */}
+              <div className="flex-1 min-h-0">
+                <ConversationHistory
+                  messages={interview.conversation_history}
+                  agentLabel={agentLabel}
+                  emptyText={
+                    canRespond
+                      ? 'Join the session to start talking.'
+                      : 'Start the interview to begin.'
+                  }
+                />
               </div>
             </div>
               )}
             </div>
 
-            {/* Right Side - 2/3 width (Sandbox) */}
-            <div className="w-2/3 min-w-0 p-4">
-              {canRespond ? (
-                <CodeSandbox interviewId={interviewId} />
-              ) : (
-                <div className="h-full flex items-center justify-center">
-                  <Card>
-                    <CardContent className="py-12 text-center">
-                      <p className="text-muted-foreground">
-                        Start the interview to access the code editor
-                      </p>
-                    </CardContent>
-                  </Card>
-                </div>
-              )}
-            </div>
+            {/* English practice gets the coaching panel where the sandbox would be */}
+            {!hasCodeEditor && (
+              <div className="w-1/3 min-w-72 border-l border-border">
+                <EnglishSessionPanel
+                  interviewId={interviewId}
+                  isActive={canRespond && isConnected}
+                />
+              </div>
+            )}
+
+            {hasCodeEditor && (
+              <div className="w-2/3 min-w-0 p-4">
+                {canRespond ? (
+                  <CodeSandbox interviewId={interviewId} />
+                ) : (
+                  <div className="h-full flex items-center justify-center">
+                    <Card>
+                      <CardContent className="py-12 text-center">
+                        <p className="text-muted-foreground">
+                          Start the interview to access the code editor
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>

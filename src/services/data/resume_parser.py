@@ -9,6 +9,7 @@ import pdfplumber
 from pydantic import BaseModel, Field
 
 from src.core.config import settings
+from src.core.secrets import openai_api_key
 from src.schemas.resume import ResumeAnalysis
 
 
@@ -18,7 +19,7 @@ class ResumeParser:
 
     def _get_openai_client(self):
         if self._openai_client is None:
-            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            client = AsyncOpenAI(api_key=openai_api_key())
             self._openai_client = instructor.patch(client)
         return self._openai_client
 

@@ -12,6 +12,7 @@ import instructor
 from pydantic import BaseModel, Field
 
 from src.core.config import settings
+from src.core.secrets import openai_api_key
 from src.services.data.question_importer import (
     _extract_text_from_file,
     _get_click_targets,
@@ -139,7 +140,7 @@ _PLAN_SYSTEM = (
 
 
 async def _plan_browser_steps(url: str, human_feedback: Optional[str] = None, log_cb: LogCb = None) -> BrowserPlan:
-    client = instructor.patch(AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=20.0))
+    client = instructor.patch(AsyncOpenAI(api_key=openai_api_key(), timeout=20.0))
     feedback_block = (
         f"\n\nPrevious attempt needed human help. User feedback: \"{human_feedback}\"\n"
         "Adjust the plan to handle this."
@@ -329,7 +330,7 @@ async def _try_bypass_verification(page) -> bool:
 
 async def _ask_gpt_next_action(screenshot_b64: str, page_snippet: str) -> str:
     """Send screenshot to GPT Vision and ask what the browser should do next."""
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=20.0)
+    client = AsyncOpenAI(api_key=openai_api_key(), timeout=20.0)
     response = await client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -366,7 +367,7 @@ _ANALYSE_SYSTEM = (
 
 
 async def _analyse_page_text(url: str, text: str, log_cb: LogCb = None) -> PageDiscovery:
-    client = instructor.patch(AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=30.0))
+    client = instructor.patch(AsyncOpenAI(api_key=openai_api_key(), timeout=30.0))
     user_content = (
         f"URL: {url}\n\n"
         "Analyze the page content below. Identify:\n"
@@ -448,7 +449,7 @@ _discover_sessions: dict[str, asyncio.Queue] = {}
 
 async def _plan_recovery_steps(instruction: str, page_text: str) -> BrowserPlan:
     """Plan browser steps to recover from a stuck state given a user instruction."""
-    client = instructor.patch(AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=20.0))
+    client = instructor.patch(AsyncOpenAI(api_key=openai_api_key(), timeout=20.0))
     return await client.chat.completions.create(
         model=_PARSE_MODEL,
         response_model=BrowserPlan,
@@ -901,7 +902,7 @@ async def _parse_text_to_english_topics(
     chars = min(len(raw_text), 30_000)
     await _log(log_cb, f"→ GPT [{_PARSE_MODEL}] English extraction: {chars:,} chars from {source}")
 
-    client = instructor.patch(AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=90.0))
+    client = instructor.patch(AsyncOpenAI(api_key=openai_api_key(), timeout=90.0))
 
     instructions_block = ""
     if instructions and instructions.strip():
@@ -962,7 +963,7 @@ async def _parse_text_to_code_topics(
     chars = min(len(raw_text), 30_000)
     await _log(log_cb, f"→ GPT [{_PARSE_MODEL}] code extraction (text-only): {chars:,} chars from {source}")
 
-    client = instructor.patch(AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=90.0))
+    client = instructor.patch(AsyncOpenAI(api_key=openai_api_key(), timeout=90.0))
 
     instructions_block = ""
     if instructions and instructions.strip():
@@ -1150,7 +1151,7 @@ async def _parse_code_topics_with_vision(
     sc_kb = len(screenshot_b64) * 3 // 4 // 1024 if screenshot_b64 else 0
     await _log(log_cb, f"→ GPT [{model}] code extraction (vision={has_vision}): {min(len(raw_text),20_000):,} chars{f' + screenshot {sc_kb}KB' if has_vision else ''} from {source}")
 
-    client = instructor.patch(AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=120.0))
+    client = instructor.patch(AsyncOpenAI(api_key=openai_api_key(), timeout=120.0))
 
     instructions_block = ""
     if instructions and instructions.strip():
@@ -1378,7 +1379,7 @@ class _AICodeFill(BaseModel):
 
 
 async def ai_fill_english_topic(title: str, skill_focus: str, level: str) -> dict:
-    client = instructor.patch(AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=60.0))
+    client = instructor.patch(AsyncOpenAI(api_key=openai_api_key(), timeout=60.0))
     result = await client.chat.completions.create(
         model=_PARSE_MODEL,
         response_model=_AIEnglishFill,
@@ -1429,7 +1430,7 @@ class _AIEnglishFillFromImage(BaseModel):
 async def ai_fill_code_topic_from_image(image_b64: str) -> dict:
     """Extract all code topic fields from a screenshot using GPT-4o-mini vision."""
     import json
-    client = instructor.patch(AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=90.0))
+    client = instructor.patch(AsyncOpenAI(api_key=openai_api_key(), timeout=90.0))
     result = await client.chat.completions.create(
         model=_PARSE_MODEL,
         response_model=_AICodeFillFromImage,
@@ -1474,7 +1475,7 @@ async def ai_fill_code_topic_from_image(image_b64: str) -> dict:
 
 async def ai_fill_english_topic_from_image(image_b64: str) -> dict:
     """Extract all English topic fields from a screenshot using GPT-4o-mini vision."""
-    client = instructor.patch(AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=60.0))
+    client = instructor.patch(AsyncOpenAI(api_key=openai_api_key(), timeout=60.0))
     result = await client.chat.completions.create(
         model=_PARSE_MODEL,
         response_model=_AIEnglishFillFromImage,
@@ -1506,7 +1507,7 @@ async def ai_fill_english_topic_from_image(image_b64: str) -> dict:
 
 async def ai_fill_code_topic(title: str, category: str, difficulty: str, languages: str) -> dict:
     import json
-    client = instructor.patch(AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=60.0))
+    client = instructor.patch(AsyncOpenAI(api_key=openai_api_key(), timeout=60.0))
     result = await client.chat.completions.create(
         model=_PARSE_MODEL,
         response_model=_AICodeFill,

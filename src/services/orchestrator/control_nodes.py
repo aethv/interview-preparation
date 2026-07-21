@@ -10,18 +10,68 @@ from typing import TYPE_CHECKING
 from datetime import datetime
 from openai import AsyncOpenAI
 
-from src.services.orchestrator.types import InterviewState, NextActionDecision
+from src.core.session_modes import is_english_practice
+from src.services.orchestrator.types import (
+    InterviewState, NextActionDecision, EnglishNextActionDecision
+)
 from src.services.orchestrator.context_builders import (
-    build_decision_context, build_conversation_context, build_resume_context
+    build_decision_context, build_control_context
 )
 from src.services.orchestrator.constants import (
     get_system_prompt,
     get_summary_interval, get_max_conversation_length,
     get_temperature_analytical, get_temperature_balanced, get_model,
+    get_decision_model,
 )
 from src.services.orchestrator.intent_detection import detect_user_intent
 
 logger = logging.getLogger(__name__)
+
+# Decision rubrics are static, so they belong in the system message rather than
+# being re-interpolated into the user prompt each turn.
+INTERVIEW_DECISION_SYSTEM_PROMPT = """You are an experienced interviewer with full autonomy deciding the next action. \
+Make decisions based on what feels natural and productive. Trust your judgment - if the conversation is going well, \
+continue. If it needs a change, make it. If it feels complete, wrap it up.
+
+AVAILABLE ACTIONS:
+- greeting: First interaction only
+- question: New question about background (can transition to new topics naturally)
+- followup: Deeper dive into last answer
+- sandbox_guidance: Guide to code sandbox (auto-generates exercises, provides hints)
+- code_review: Review submitted code (executes and analyzes)
+- evaluation: Comprehensive interview evaluation
+- closing: End interview
+
+DECISION PRINCIPLES:
+- Follow natural conversation flow
+- Don't repeat same action consecutively
+- Respect user's explicit requests (evaluate, move on, etc.)
+- Use sandbox_guidance proactively for technical roles
+- Adapt interview length based on quality, not turn counts
+- Maintain variety - don't repeat same action type 2-3+ times
+- Use question to naturally transition to new topics when needed
+
+Choose: greeting, question, followup, sandbox_guidance, code_review, evaluation, closing"""
+
+ENGLISH_DECISION_SYSTEM_PROMPT = """You are a warm, patient English conversation partner running a roleplay \
+practice session, deciding the next action. You never turn the session into a technical interview or a coding exercise.
+
+AVAILABLE ACTIONS:
+- greeting: First interaction only, set the scene
+- question: Move the scenario forward with a new prompt or turn in the roleplay
+- followup: React to what they just said and dig into it, correcting gently if useful
+- evaluation: Summarize how their English performed this session
+- closing: Wrap up the conversation
+
+DECISION PRINCIPLES:
+- This is a spoken English practice session, NOT a job interview and NOT a coding session
+- Never propose writing, running or reviewing code, and never mention a code editor or sandbox
+- Keep the learner talking as much as possible; you speak less than they do
+- Stay inside the scenario; use followup when their answer opens something worth exploring
+- Respect explicit requests (finish, feedback, change topic)
+- Move to evaluation when the scenario has played out or the learner asks for feedback
+
+Choose: greeting, question, followup, evaluation, closing"""
 
 
 class ControlNodeMixin:
@@ -52,6 +102,7 @@ class ControlNodeMixin:
             },
             "turn_count": 0,
             "phase": "intro",
+            "session_mode": "interview",
             "code_submissions": [],
             "conversation_summary": "No conversation yet.",
             "candidate_name": None,
@@ -122,11 +173,6 @@ class ControlNodeMixin:
 
         decision_ctx = build_decision_context(state, self.interview_logger)
 
-        conversation_context = build_conversation_context(
-            state, self.interview_logger
-        )
-        resume_context = build_resume_context(state)
-
         answer_quality = 0.0
         if state.get("last_response") and state.get("current_question"):
             try:
@@ -139,11 +185,10 @@ class ControlNodeMixin:
             except Exception:
                 pass
 
-        conversation_history = state.get("conversation_history", [])
-        conversation_text = "\n".join([
-            f"{msg.get('role', 'unknown').upper()}: {msg.get('content', '')}"
-            for msg in conversation_history[-20:]
-        ])
+        # Summary + last few truncated messages instead of 20 full ones: the
+        # decision only needs recent flow, and this stops the prompt growing
+        # linearly with session length.
+        conversation_text = build_control_context(state)
 
         intent_info = ""
         if active_request:
@@ -151,45 +196,47 @@ class ControlNodeMixin:
             if active_request.get('metadata'):
                 intent_info += f"Intent metadata: {json.dumps(active_request.get('metadata'), indent=2)}\n"
 
-        prompt = f"""You are an experienced interviewer deciding the next action.
+        english_mode = is_english_practice(state.get("session_mode"))
 
-CONVERSATION:
+        # Static rubric lives in the system message (stable prefix), only
+        # per-turn state goes in the user message.
+        if english_mode:
+            # English practice: conversation partner, not interviewer. No code
+            # actions are offered here and none exist in EnglishNextActionDecision.
+            decision_system_prompt = ENGLISH_DECISION_SYSTEM_PROMPT
+            decision_model = EnglishNextActionDecision
+            state_block = (
+                f"- Turn: {decision_ctx['turn']}, Phase: {decision_ctx['phase']}\n"
+                f"- Exchanges so far: {decision_ctx['questions_count']}"
+            )
+        else:
+            decision_system_prompt = INTERVIEW_DECISION_SYSTEM_PROMPT
+            decision_model = NextActionDecision
+            state_block = (
+                f"- Turn: {decision_ctx['turn']}, Phase: {decision_ctx['phase']}\n"
+                f"- Questions: {decision_ctx['questions_count']}, Quality: {answer_quality:.2f}\n"
+                f"- Sandbox: {'Active' if state.get('sandbox', {}).get('is_active') else 'Inactive'}\n"
+                f"- Code: {'Yes' if state.get('current_code') else 'No'}"
+            )
+
+        prompt = f"""CONVERSATION:
 {conversation_text}
 
 STATE:
-- Turn: {decision_ctx['turn']}, Phase: {decision_ctx['phase']}
-- Questions: {decision_ctx['questions_count']}, Quality: {answer_quality:.2f}
-- Sandbox: {'Active' if state.get('sandbox', {}).get('is_active') else 'Inactive'}
-- Code: {'Yes' if state.get('current_code') else 'No'}
+{state_block}
 {intent_info}
 Topics: {', '.join(decision_ctx.get('topics_covered', []) or ['None'])}
 
-AVAILABLE ACTIONS:
-- greeting: First interaction only
-- question: New question about background (can transition to new topics naturally)
-- followup: Deeper dive into last answer
-- sandbox_guidance: Guide to code sandbox (auto-generates exercises, provides hints)
-- code_review: Review submitted code (executes and analyzes)
-- evaluation: Comprehensive interview evaluation
-- closing: End interview
-
-DECISION PRINCIPLES:
-- Follow natural conversation flow
-- Don't repeat same action consecutively
-- Respect user's explicit requests (evaluate, move on, etc.)
-- Use sandbox_guidance proactively for technical roles
-- Adapt interview length based on quality, not turn counts
-- Maintain variety - don't repeat same action type 2-3+ times
-- Use question to naturally transition to new topics when needed
-
-Choose: greeting, question, followup, sandbox_guidance, code_review, evaluation, closing"""
+Choose the next action."""
 
         try:
             decision = await self.llm_helper.call_llm_with_instructor(
-                system_prompt="You are an experienced interviewer with full autonomy. Make decisions based on what feels natural and productive. Trust your judgment - if the conversation is going well, continue. If it needs a change, make it. If it feels complete, wrap it up.",
+                system_prompt=decision_system_prompt,
                 user_prompt=prompt,
-                response_model=NextActionDecision,
+                response_model=decision_model,
                 temperature=get_temperature_balanced(),
+                model=get_decision_model(),
+                role="routing",
             )
 
             # Trust LLM decision - it has full context and can avoid repetition naturally
@@ -247,11 +294,16 @@ Choose: greeting, question, followup, sandbox_guidance, code_review, evaluation,
         # Add assistant message if present
         assistant_messages = []
         if state.get("next_message"):
-            assistant_messages.append({
+            message = {
                 "role": "assistant",
                 "content": state["next_message"],
                 "timestamp": datetime.utcnow().isoformat(),
-            })
+            }
+            # Nodes may attach structured extras (e.g. an English correction) that
+            # the live session panel reads back out of the transcript.
+            if state.get("next_message_metadata"):
+                message["metadata"] = state["next_message_metadata"]
+            assistant_messages.append(message)
 
         # Return messages to append (reducer will handle the append)
         # CRITICAL: Only add messages that aren't already in conversation_history
@@ -278,6 +330,9 @@ Choose: greeting, question, followup, sandbox_guidance, code_review, evaluation,
         updates["next_node"] = None
         # Clear code after processing to prevent re-routing to code_review
         updates["current_code"] = None
+        # Metadata belongs to the message just written; clear it so the next turn
+        # cannot inherit a stale correction.
+        updates["next_message_metadata"] = None
         # next_message preserved until next turn starts (allows reading after graph execution)
 
         # Update conversation summary periodically (merged from update_summary_node)

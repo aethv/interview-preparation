@@ -69,6 +69,7 @@ def _english_to_response(t) -> EnglishTopicResponse:
         skill_focus=t.skill_focus,
         level=t.level,
         scenario_prompt=t.scenario_prompt,
+        scenes=t.scenes or [],
         key_vocabulary=t.key_vocabulary,
         evaluation_criteria=t.evaluation_criteria,
         source=t.source,

@@ -46,7 +46,7 @@ export default function DashboardPage() {
     queryFn: () => resumesApi.list(),
   });
 
-  const { data: interviews, isLoading: interviewsLoading } = useQuery({
+  const { data: interviews, isLoading: interviewsLoading, error: interviewsError } = useQuery({
     queryKey: ['interviews'],
     queryFn: () => interviewsApi.list(),
   });
@@ -156,6 +156,14 @@ export default function DashboardPage() {
           Get ready for your next interview with AI-powered practice sessions.
         </p>
       </div>
+
+      {/* Surface a failed load rather than showing empty placeholders forever */}
+      {interviewsError && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3">
+          <p className="text-sm font-medium text-destructive">Could not load your data</p>
+          <p className="text-xs text-muted-foreground">{(interviewsError as Error).message}</p>
+        </div>
+      )}
 
       {/* Basic Stats Grid - Always Visible */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">

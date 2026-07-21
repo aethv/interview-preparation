@@ -23,6 +23,10 @@ import {
   englishTopicsApi, EnglishTopic, EnglishTopicPreview, EnglishAIFillResponse,
   PageDiscovery, BrowserPlanStep, BrowserStepStatus, NeedsHumanEvent,
 } from '@/lib/api/practice_topics';
+import { buildEnglishPracticeJobDescription } from '@/lib/practice-session-prompts';
+import { ExpandableText } from '@/components/admin/expandable-text';
+import { SessionPromptPreview } from '@/components/admin/session-prompt-preview';
+import { SceneEditor } from '@/components/admin/scene-editor';
 
 // ── Progress sim (shared pattern) ─────────────────────────────────────────────
 
@@ -129,6 +133,7 @@ function EnglishTopicFormDialog({
     skill_focus: initial?.skill_focus ?? (skillFocusOptions[0] ?? ''),
     level: initial?.level ?? 'Any',
     scenario_prompt: initial?.scenario_prompt ?? '',
+    scenes: initial?.scenes ?? [],
     key_vocabulary: initial?.key_vocabulary ?? '',
     evaluation_criteria: initial?.evaluation_criteria ?? '',
     source: initial?.source ?? '',
@@ -158,10 +163,13 @@ function EnglishTopicFormDialog({
   };
 
   const mutation = useMutation({
-    mutationFn: () =>
-      initial
-        ? englishTopicsApi.update(initial.id, form)
-        : englishTopicsApi.create(form),
+    mutationFn: () => {
+      // Drop half-filled scenes: a scene with no title is unusable in the picker
+      const payload = { ...form, scenes: form.scenes.filter(s => s.title.trim()) };
+      return initial
+        ? englishTopicsApi.update(initial.id, payload)
+        : englishTopicsApi.create(payload);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['english-topics'] });
       toast.success(initial ? 'Topic updated' : 'Topic created');
@@ -221,14 +229,27 @@ function EnglishTopicFormDialog({
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-medium">Scenario Prompt *</label>
+            <label className="text-xs font-medium">Scenario prompt *</label>
+            <p className="text-xs text-muted-foreground">
+              Main instructions the AI tutor uses when a user starts this English practice session.
+            </p>
             <Textarea
               value={form.scenario_prompt}
               onChange={e => set('scenario_prompt')(e.target.value)}
-              rows={5}
+              rows={8}
+              className="font-mono text-xs"
               placeholder="Full prompt the agent uses to open the session…"
             />
           </div>
+          <SceneEditor
+            scenes={form.scenes}
+            onChange={(scenes) => setForm(f => ({ ...f, scenes }))}
+          />
+
+          {/* Preview reflects the first scene, which is what most learners will pick */}
+          <SessionPromptPreview
+            value={buildEnglishPracticeJobDescription(form, form.scenes[0] ?? null)}
+          />
 
           <div className="space-y-1">
             <label className="text-xs font-medium">Key Vocabulary <span className="text-muted-foreground font-normal">(comma-separated)</span></label>
@@ -1009,7 +1030,9 @@ export function EnglishTopicsTab() {
                       {!t.is_active && <Badge variant="outline" className="text-xs">Inactive</Badge>}
                     </div>
                     <p className="text-sm font-medium">{t.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{t.scenario_prompt}</p>
+                    <div className="mt-1">
+                      <ExpandableText text={t.scenario_prompt} maxChars={120} />
+                    </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditTarget(t)}>

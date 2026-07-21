@@ -26,6 +26,9 @@ import {
   codeTopicsApi, CodeTopic, CodeTopicPreview, CodeAIFillResponse,
   PageDiscovery, BrowserPlanStep, BrowserStepStatus, NeedsHumanEvent,
 } from '@/lib/api/practice_topics';
+import { buildCodePracticeJobDescription } from '@/lib/practice-session-prompts';
+import { ExpandableText } from '@/components/admin/expandable-text';
+import { SessionPromptPreview } from '@/components/admin/session-prompt-preview';
 
 // ── Progress sim ───────────────────────────────────────────────────────────────
 
@@ -349,9 +352,12 @@ function CodeTopicFormDialog({
               </div>
             </TabsContent>
 
-            <TabsContent value="problem" className="px-1">
+            <TabsContent value="problem" className="px-1 space-y-4">
               <div className="space-y-1">
-                <label className="text-xs font-medium">Problem Statement *</label>
+                <label className="text-xs font-medium">Problem prompt *</label>
+                <p className="text-xs text-muted-foreground">
+                  Full problem shown to the candidate and sent to the AI interviewer.
+                </p>
                 <Textarea
                   value={form.problem_statement}
                   onChange={e => set('problem_statement')(e.target.value)}
@@ -360,6 +366,7 @@ function CodeTopicFormDialog({
                   placeholder="Full problem description with constraints and examples…"
                 />
               </div>
+              <SessionPromptPreview value={buildCodePracticeJobDescription(form)} />
             </TabsContent>
 
             <TabsContent value="hints" className="px-1">
@@ -1308,7 +1315,7 @@ export function CodeTopicsTab() {
               <Th col="difficulty" className="w-24">Level</Th>
               <Th col="languages" className="w-28">Languages</Th>
               <Th col="title" className="w-52">Name</Th>
-              <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</th>
+              <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Problem prompt</th>
               <th className="w-20 px-3 py-2.5" />
             </tr>
           </thead>
@@ -1343,7 +1350,7 @@ export function CodeTopicsTab() {
                   </div>
                 </td>
                 <td className="px-3 py-2.5 max-w-xs">
-                  <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{t.problem_statement}</p>
+                  <ExpandableText text={t.problem_statement} maxChars={100} />
                 </td>
                 <td className="px-3 py-2.5">
                   <div className="flex items-center justify-end gap-1">

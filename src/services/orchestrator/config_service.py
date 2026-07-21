@@ -16,7 +16,22 @@ _cache_loaded_at: float = 0.0
 _DEFAULTS: dict[str, tuple[Any, str]] = {
     "model": (
         "gpt-4o-mini",
-        "OpenAI model used for all LLM calls",
+        "Default OpenAI model — used when a role-specific model below is blank",
+    ),
+    # Role-specific models. Blank means "use `model`". Splitting them lets the
+    # cheap control-plane calls run on a small model while the text the user
+    # actually hears comes from a stronger one.
+    "model_decision": (
+        "",
+        "Model for intent detection, action routing, answer scoring and summaries (cheapest)",
+    ),
+    "model_conversation": (
+        "",
+        "Model for greeting, questions, follow-ups and closing — the user hears this output",
+    ),
+    "model_evaluation": (
+        "",
+        "Model for final feedback and code review (strongest)",
     ),
     "temperature_creative": (
         0.8,

@@ -9,6 +9,53 @@ from pydantic import BaseModel, Field
 # STATE TYPES
 # ============================================================================
 
+def _dedupe(items: list, key) -> list:
+    """Keep the first occurrence of each key, preserving order."""
+    seen = set()
+    out = []
+    for item in items:
+        try:
+            k = key(item)
+        except Exception:
+            # Unkeyable entries are kept as-is rather than dropped
+            out.append(item)
+            continue
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(item)
+    return out
+
+
+def _merge_by(key):
+    """Build a LangGraph reducer that appends but never duplicates.
+
+    plain operator.add was wrong here. Every turn re-seeds the graph with the
+    full history loaded from the database, and LangGraph applies the reducer to
+    that input as well — so the existing checkpoint and the incoming snapshot
+    were concatenated, doubling the conversation on every single turn.
+    """
+    def reducer(left: list | None, right: list | None) -> list:
+        return _dedupe(list(left or []) + list(right or []), key)
+    return reducer
+
+
+# Identity of a message: same speaker, same words, same moment.
+merge_messages = _merge_by(
+    lambda m: (m.get("role"), m.get("content"), m.get("timestamp"))
+)
+merge_questions = _merge_by(
+    lambda q: q.get("id") or (q.get("text"), q.get("asked_at_turn"))
+)
+merge_intents = _merge_by(
+    lambda i: (i.get("turn"), i.get("type"), i.get("extracted_from"))
+)
+merge_code_submissions = _merge_by(
+    lambda s: (s.get("timestamp"), s.get("code"))
+)
+merge_checkpoints = _merge_by(lambda c: c)
+
+
 class QuestionRecord(TypedDict):
     """Record of a question asked during the interview."""
     id: str
@@ -50,7 +97,9 @@ class SandboxState(TypedDict):
 class InterviewState(TypedDict):
     """Robust state schema for LangGraph interview workflow with reducers.
 
-    Fields annotated with operator.add use LangGraph reducers for append-only operations.
+    Append-only fields use de-duplicating reducers (see _merge_by): the graph is
+    re-seeded from the database each turn, so a plain concatenation would double
+    the stored lists on every execution.
     This ensures state updates are atomic and prevents last-writer-wins bugs.
     """
     # Core identifiers
@@ -61,10 +110,10 @@ class InterviewState(TypedDict):
 
     # Conversation - APPEND ONLY (uses reducer)
     turn_count: int
-    conversation_history: Annotated[list[dict], operator.add]
+    conversation_history: Annotated[list[dict], merge_messages]
 
     # Questions tracking - APPEND ONLY (uses reducer)
-    questions_asked: Annotated[list[QuestionRecord], operator.add]
+    questions_asked: Annotated[list[QuestionRecord], merge_questions]
     current_question: str | None
 
     # Resume understanding
@@ -76,8 +125,11 @@ class InterviewState(TypedDict):
     # Job context
     job_description: str | None
 
+    # interview | code_practice | english_practice (src/core/session_modes.py)
+    session_mode: str
+
     # User intent - APPEND ONLY (uses reducer)
-    detected_intents: Annotated[list[UserIntent], operator.add]
+    detected_intents: Annotated[list[UserIntent], merge_intents]
     active_user_request: UserIntent | None
 
     # Sandbox / code
@@ -91,12 +143,14 @@ class InterviewState(TypedDict):
     # Runtime fields
     answer_quality: float
     next_message: str | None  # AI's next message to send
+    # Structured extras attached to the next assistant message (e.g. corrections)
+    next_message_metadata: dict | None
     last_response: str | None  # User's last response
     current_code: str | None
     code_execution_result: dict | None
     code_quality: dict | None
     # APPEND ONLY (uses reducer)
-    code_submissions: Annotated[list[dict], operator.add]
+    code_submissions: Annotated[list[dict], merge_code_submissions]
     feedback: dict | None
 
     # Conversation summary (for memory management)
@@ -104,7 +158,7 @@ class InterviewState(TypedDict):
 
     # System
     # APPEND ONLY (uses reducer)
-    checkpoints: Annotated[list[str], operator.add]
+    checkpoints: Annotated[list[str], merge_checkpoints]
 
 
 # ============================================================================
@@ -129,6 +183,19 @@ class NextActionDecision(BaseModel):
     action: Literal[
         "greeting", "question", "followup", "closing",
         "evaluation", "sandbox_guidance", "code_review"
+    ] = Field(..., description="What action to take next")
+    reasoning: str = Field(...,
+                           description="Brief reasoning for this decision")
+
+
+class EnglishNextActionDecision(BaseModel):
+    """Decision model for english_practice sessions.
+
+    Deliberately a separate model: the code actions are absent from the Literal,
+    so the LLM is structurally unable to pick sandbox_guidance / code_review.
+    """
+    action: Literal[
+        "greeting", "question", "followup", "evaluation", "closing"
     ] = Field(..., description="What action to take next")
     reasoning: str = Field(...,
                            description="Brief reasoning for this decision")

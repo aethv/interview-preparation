@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Mic, MicOff, Video, VideoOff } from 'lucide-react';
 import { Room, Track, RoomEvent } from 'livekit-client';
 import { toast } from 'sonner';
+import { setCameraPreference } from '@/lib/media-preferences';
 
 interface RoomControlsProps {
   room: Room | null;
@@ -14,7 +15,8 @@ interface RoomControlsProps {
 
 export function RoomControls({ room, onMuteChange, onVideoChange }: RoomControlsProps) {
   const [isMuted, setIsMuted] = useState(false);
-  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  // Sessions start audio-only; the effect below reconciles with the real track state
+  const [isVideoEnabled, setIsVideoEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   // Sync state with actual track states
@@ -107,14 +109,17 @@ export function RoomControls({ room, onMuteChange, onVideoChange }: RoomControls
 
       console.log('Video state:', { cameraTrack: !!cameraTrack, isMuted: cameraTrack?.isMuted, isCurrentlyEnabled });
 
+      // The choice is remembered so the next session starts the same way
       if (isCurrentlyEnabled) {
         await localParticipant.setCameraEnabled(false);
         setIsVideoEnabled(false);
+        setCameraPreference(false);
         onVideoChange?.(false);
         toast.success('Camera disabled');
       } else {
         await localParticipant.setCameraEnabled(true);
         setIsVideoEnabled(true);
+        setCameraPreference(true);
         onVideoChange?.(true);
         toast.success('Camera enabled');
       }

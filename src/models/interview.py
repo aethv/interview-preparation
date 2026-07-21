@@ -24,6 +24,13 @@ class Interview(Base):
         String(50), default="pending", nullable=False
     )  # pending, in_progress, completed, cancelled
 
+    # interview | code_practice | english_practice — see src/core/session_modes.py.
+    # english_practice sessions never expose the code sandbox or code nodes.
+    session_mode: Mapped[str] = mapped_column(
+        String(30), default="interview", server_default="interview",
+        nullable=False, index=True
+    )
+
     conversation_history: Mapped[list | None] = mapped_column(
         JSON, nullable=True, default=list
     )

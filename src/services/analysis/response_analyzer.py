@@ -6,6 +6,8 @@ import instructor
 from pydantic import BaseModel, Field
 
 from src.core.config import settings
+from src.core.secrets import openai_api_key
+from src.services.orchestrator.constants import get_decision_model
 
 
 class AnswerQuality(BaseModel):
@@ -42,7 +44,7 @@ class ResponseAnalyzer:
 
     def _get_openai_client(self):
         if self._openai_client is None:
-            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            client = AsyncOpenAI(api_key=openai_api_key())
             self._openai_client = instructor.patch(client)
         return self._openai_client
 
@@ -92,8 +94,10 @@ Calculate an overall quality score (average of depth, relevance, completeness).
 Provide brief feedback on the answer quality."""
 
         try:
+            # Scoring is control-plane work — runs on the cheap decision model
+            model = get_decision_model()
             result = await client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=model,
                 response_model=AnswerQuality,
                 messages=[
                     {

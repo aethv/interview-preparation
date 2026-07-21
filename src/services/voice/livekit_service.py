@@ -4,20 +4,29 @@ from typing import Optional
 from livekit import api
 
 from src.core.config import settings
+from src.core.secrets import get_secret_value
 
 
 class LiveKitService:
     """Service for LiveKit room and token management."""
 
     def __init__(self):
-        """Initialize LiveKit service with API credentials."""
-        if not settings.LIVEKIT_API_KEY or not settings.LIVEKIT_API_SECRET:
+        """Initialize LiveKit service with API credentials.
+
+        Credentials resolve to the admin-managed secret first, then the
+        environment variable.
+        """
+        api_key = get_secret_value("livekit_api_key")
+        api_secret = get_secret_value("livekit_api_secret")
+
+        if not api_key or not api_secret:
             raise ValueError(
-                "LiveKit API key and secret must be set in environment variables"
+                "LiveKit API key and secret are not configured. Set them in "
+                "Admin → API Keys, or via LIVEKIT_API_KEY / LIVEKIT_API_SECRET."
             )
 
-        self.api_key = settings.LIVEKIT_API_KEY
-        self.api_secret = settings.LIVEKIT_API_SECRET
+        self.api_key = api_key
+        self.api_secret = api_secret
         self.url = settings.LIVEKIT_URL or "wss://interviewlab-livekit.livekit.cloud"
 
     def create_access_token(

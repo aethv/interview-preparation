@@ -7,10 +7,13 @@ import instructor
 
 from src.services.orchestrator.constants import (
     get_model,
+    get_conversation_model,
+    get_decision_model,
     get_temperature_creative,
     get_temperature_balanced,
     get_temperature_analytical,
 )
+from src.services.logging.token_usage import record_usage
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +38,12 @@ class LLMHelper:
         model: str | None = None,
         temperature: float | None = None,
         response_format: Optional[dict] = None,
+        role: str = "conversation",
     ) -> str:
+        resolved_model = model or get_model()
         try:
             response = await self.client.chat.completions.create(
-                model=model or get_model(),
+                model=resolved_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -46,6 +51,7 @@ class LLMHelper:
                 temperature=temperature if temperature is not None else get_temperature_balanced(),
                 response_format=response_format,
             )
+            record_usage(resolved_model, role, response)
             return response.choices[0].message.content.strip()
         except Exception as e:
             logger.error(f"LLM call failed: {e}", exc_info=True)
@@ -58,10 +64,12 @@ class LLMHelper:
         response_model: Any,
         model: str | None = None,
         temperature: float | None = None,
+        role: str = "decision",
     ) -> Any:
+        resolved_model = model or get_model()
         try:
             response = await self.instructor_client.chat.completions.create(
-                model=model or get_model(),
+                model=resolved_model,
                 response_model=response_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -69,25 +77,33 @@ class LLMHelper:
                 ],
                 temperature=temperature if temperature is not None else get_temperature_balanced(),
             )
+            # instructor returns the parsed model; the raw completion (and its
+            # usage block) is attached to it.
+            record_usage(resolved_model, role,
+                         getattr(response, "_raw_response", None))
             return response
         except Exception as e:
             logger.error(f"Instructor LLM call failed: {e}", exc_info=True)
             raise
 
     async def call_llm_creative(self, system_prompt: str, user_prompt: str, model: str | None = None) -> str:
+        """Spoken output — defaults to the conversation model."""
         return await self.call_llm(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            model=model,
+            model=model or get_conversation_model(),
             temperature=get_temperature_creative(),
+            role="conversation",
         )
 
     async def call_llm_analytical(self, system_prompt: str, user_prompt: str, model: str | None = None) -> str:
+        """Scoring and summarizing — defaults to the cheap decision model."""
         return await self.call_llm(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            model=model,
+            model=model or get_decision_model(),
             temperature=get_temperature_analytical(),
+            role="decision",
         )
 
     async def call_llm_json(
@@ -96,6 +112,7 @@ class LLMHelper:
         user_prompt: str,
         model: str | None = None,
         temperature: float | None = None,
+        role: str = "conversation",
     ) -> str:
         return await self.call_llm(
             system_prompt=system_prompt,
@@ -103,4 +120,5 @@ class LLMHelper:
             model=model,
             temperature=temperature,
             response_format={"type": "json_object"},
+            role=role,
         )

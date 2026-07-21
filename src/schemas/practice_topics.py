@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 
 ENGLISH_SKILL_FOCUS = ["Speaking", "Grammar", "Vocabulary", "Writing", "Listening"]
@@ -16,11 +16,28 @@ CODE_LANGUAGES = ["python", "javascript", "java", "any"]
 
 # ── English Topics ─────────────────────────────────────────────────────────────
 
+class TopicScene(BaseModel):
+    """One pickable variation of a topic's scenario.
+
+    Scenes let the learner choose the situation before starting, and give the
+    agent an unambiguous role to play instead of improvising from a paragraph.
+    """
+
+    id: str = Field(..., max_length=50, description="Stable slug, unique within the topic")
+    title: str = Field(..., max_length=120, description="Short label shown on the picker")
+    your_role: str = Field("", max_length=200, description="Who the learner plays")
+    ai_role: str = Field("", max_length=200, description="Who the agent plays")
+    setting: str = Field("", max_length=300, description="Where this takes place")
+    goal: str = Field("", max_length=300, description="What the learner is trying to achieve")
+    opening_line: str = Field("", max_length=500, description="How the agent opens the scene")
+
+
 class EnglishTopicCreate(BaseModel):
     title: str
     skill_focus: str
     level: str
     scenario_prompt: str
+    scenes: list[TopicScene] = Field(default_factory=list, max_length=6)
     key_vocabulary: Optional[str] = None
     evaluation_criteria: Optional[str] = None
     source: Optional[str] = None
@@ -32,6 +49,7 @@ class EnglishTopicUpdate(BaseModel):
     skill_focus: Optional[str] = None
     level: Optional[str] = None
     scenario_prompt: Optional[str] = None
+    scenes: Optional[list[TopicScene]] = Field(None, max_length=6)
     key_vocabulary: Optional[str] = None
     evaluation_criteria: Optional[str] = None
     is_active: Optional[bool] = None
@@ -43,6 +61,7 @@ class EnglishTopicResponse(BaseModel):
     skill_focus: str
     level: str
     scenario_prompt: str
+    scenes: list[TopicScene] = Field(default_factory=list)
     key_vocabulary: Optional[str]
     evaluation_criteria: Optional[str]
     source: Optional[str]
@@ -52,6 +71,12 @@ class EnglishTopicResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @field_validator("scenes", mode="before")
+    @classmethod
+    def _null_scenes_to_empty(cls, v):
+        """Rows created before the scenes migration hold NULL, not []."""
+        return v or []
 
 
 class EnglishTopicListResponse(BaseModel):
@@ -67,6 +92,7 @@ class EnglishTopicPreview(BaseModel):
     skill_focus: str
     level: str
     scenario_prompt: str
+    scenes: list[TopicScene] = Field(default_factory=list)
     key_vocabulary: Optional[str] = None
     evaluation_criteria: Optional[str] = None
     source: Optional[str] = None

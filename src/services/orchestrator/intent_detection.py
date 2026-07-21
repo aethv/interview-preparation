@@ -5,53 +5,24 @@ from typing import TYPE_CHECKING
 
 from openai import AsyncOpenAI
 from src.services.orchestrator.types import InterviewState, UserIntent, UserIntentDetection
-from src.services.orchestrator.context_builders import build_conversation_context
+from src.services.orchestrator.context_builders import build_control_context
 from src.services.orchestrator.llm_helpers import LLMHelper
+from src.services.orchestrator.constants import get_decision_model
 
 logger = logging.getLogger(__name__)
 
-if TYPE_CHECKING:
-    from src.services.logging.interview_logger import InterviewLogger
+# Static prefix, sent as the system message on every intent call.
+#
+# Placement matters for cost: OpenAI caches identical prompt PREFIXES, so this
+# block (~840 tokens) must come before any per-turn content to be cacheable.
+# It used to sit in the user message after the conversation, which made every
+# turn a cache miss.
+INTENT_SYSTEM_PROMPT = """You are an expert at understanding human intent through conversation analysis. \
+Your job is to identify what the user is TRYING TO ACCOMPLISH, not match keywords. Think about their GOAL, \
+their PURPOSE, and what ACTION they want. Consider the conversation context, the flow, and what would happen \
+if their intent was ignored. Be thoughtful and holistic in your analysis.
 
-
-async def detect_user_intent(
-    state: InterviewState,
-    openai_client: AsyncOpenAI,
-    interview_logger=None
-) -> InterviewState:
-    """Detect user intent from their last response.
-
-    Returns state updates (no mutations) following LangGraph principles.
-    """
-    last_response = state.get("last_response")
-    if not last_response:
-        return {
-            "active_user_request": None,
-        }
-
-    # Build conversation context - use last 10 messages instead of character limit
-    conversation_history = state.get("conversation_history", [])
-    recent_messages = conversation_history[-10:] if len(
-        conversation_history) > 10 else conversation_history
-    recent_context = "\n".join([
-        f"{msg.get('role', 'unknown').upper()}: {msg.get('content', '')}"
-        for msg in recent_messages
-    ])
-
-    # Get the last question asked
-    last_question = ""
-    for msg in reversed(recent_messages):
-        if msg.get("role") == "assistant":
-            last_question = msg.get("content", "")
-            break
-
-    prompt = f"""Analyze the user's response to identify their TRUE INTENT. Focus on their GOAL, not keywords.
-
-CONVERSATION (last 10 messages):
-{recent_context}
-
-LAST QUESTION: {last_question if last_question else "None (initial greeting)"}
-USER RESPONSE: "{last_response}"
+Analyze the user's response to identify their TRUE INTENT. Focus on their GOAL, not keywords.
 
 INTENT TYPES (choose the user's GOAL):
 
@@ -107,10 +78,46 @@ CONFIDENCE:
 - <0.7: Ambiguous → use no_intent
 
 METADATA FORMAT (dict, not string):
-- change_topic: {{"topic": "leadership", "redirected_from": "challenges"}}
-- write_code/review_code: {{"language": "python", "context": "project_demo"}}
-- clarify: {{"unclear_term": "solve", "question_about": "last_question"}}
-- Otherwise: {{}} (empty dict)
+- change_topic: {"topic": "leadership", "redirected_from": "challenges"}
+- write_code/review_code: {"language": "python", "context": "project_demo"}
+- clarify: {"unclear_term": "solve", "question_about": "last_question"}
+- Otherwise: {} (empty dict)
+"""
+
+if TYPE_CHECKING:
+    from src.services.logging.interview_logger import InterviewLogger
+
+
+async def detect_user_intent(
+    state: InterviewState,
+    openai_client: AsyncOpenAI,
+    interview_logger=None
+) -> InterviewState:
+    """Detect user intent from their last response.
+
+    Returns state updates (no mutations) following LangGraph principles.
+    """
+    last_response = state.get("last_response")
+    if not last_response:
+        return {
+            "active_user_request": None,
+        }
+
+    # Summary + last few messages, truncated: bounded cost over a long session
+    recent_context = build_control_context(state)
+
+    # Get the last question asked
+    last_question = ""
+    for msg in reversed(state.get("conversation_history", [])):
+        if msg.get("role") == "assistant" and msg.get("content"):
+            last_question = msg.get("content", "")
+            break
+
+    prompt = f"""CONVERSATION:
+{recent_context}
+
+LAST QUESTION: {last_question if last_question else "None (initial greeting)"}
+USER RESPONSE: "{last_response}"
 
 Return: intent_type, confidence (0.0-1.0), reasoning (brief), metadata (dict)"""
 
@@ -118,10 +125,12 @@ Return: intent_type, confidence (0.0-1.0), reasoning (brief), metadata (dict)"""
         # openai_client is already patched with instructor in langgraph_orchestrator
         llm_helper = LLMHelper(openai_client)
         detection = await llm_helper.call_llm_with_instructor(
-            system_prompt="You are an expert at understanding human intent through conversation analysis. Your job is to identify what the user is TRYING TO ACCOMPLISH, not match keywords. Think about their GOAL, their PURPOSE, and what ACTION they want. Consider the conversation context, the flow, and what would happen if their intent was ignored. Be thoughtful and holistic in your analysis.",
+            system_prompt=INTENT_SYSTEM_PROMPT,
             user_prompt=prompt,
             response_model=UserIntentDetection,
             temperature=0.2,
+            model=get_decision_model(),
+            role="intent",
         )
 
         # Store intent

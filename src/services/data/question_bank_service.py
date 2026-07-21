@@ -1,12 +1,15 @@
 """Question bank service — CRUD, embedding generation, and similarity search."""
 
+import hashlib
 import logging
+from collections import OrderedDict
 from typing import Optional
 from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
 from src.core.config import settings
+from src.core.secrets import openai_api_key
 from src.models.question_bank import QuestionBank
 from src.schemas.question_bank import QuestionCreate, QuestionUpdate, BankSearchResult
 
@@ -19,7 +22,7 @@ _SIMILAR_THRESHOLD = 0.70      # above this → similar (warn but allow)
 
 
 def _openai_client() -> AsyncOpenAI:
-    return AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+    return AsyncOpenAI(api_key=openai_api_key())
 
 
 async def embed_text(text: str) -> list[float]:
@@ -27,6 +30,30 @@ async def embed_text(text: str) -> list[float]:
     client = _openai_client()
     resp = await client.embeddings.create(model=_EMBED_MODEL, input=text[:8000])
     return resp.data[0].embedding
+
+
+# The orchestrator re-embeds a near-identical context string on every question
+# turn (job description + resume + topics), which only changes when a new topic
+# is covered. A small keyed cache removes those repeat calls. Bounded so a
+# long-running worker cannot grow it without limit.
+_EMBED_CACHE: "OrderedDict[str, list[float]]" = OrderedDict()
+_EMBED_CACHE_MAX = 256
+
+
+async def embed_text_cached(text: str) -> list[float]:
+    """embed_text with an in-process LRU cache keyed by the exact input text."""
+    key = hashlib.sha256(text[:8000].encode("utf-8")).hexdigest()
+
+    cached = _EMBED_CACHE.get(key)
+    if cached is not None:
+        _EMBED_CACHE.move_to_end(key)
+        return cached
+
+    embedding = await embed_text(text)
+    _EMBED_CACHE[key] = embedding
+    if len(_EMBED_CACHE) > _EMBED_CACHE_MAX:
+        _EMBED_CACHE.popitem(last=False)
+    return embedding
 
 
 async def get_question(db: AsyncSession, question_id: int) -> QuestionBank | None:
@@ -221,7 +248,7 @@ async def search_for_interview(
 ) -> list[BankSearchResult]:
     """Find relevant questions for an interview context (used by orchestrator)."""
     try:
-        embedding = await embed_text(context_text)
+        embedding = await embed_text_cached(context_text)
         results = await search_similar(db, embedding, limit=limit * 2, category=category)
     except Exception as e:
         logger.warning(f"Bank search failed: {e}")

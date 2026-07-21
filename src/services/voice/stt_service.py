@@ -4,6 +4,7 @@ from io import BytesIO
 from openai import AsyncOpenAI
 
 from src.core.config import settings
+from src.core.secrets import openai_api_key
 
 
 class STTService:
@@ -15,7 +16,7 @@ class STTService:
     def _get_client(self) -> AsyncOpenAI:
         """Get or create OpenAI client."""
         if self._client is None:
-            self._client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            self._client = AsyncOpenAI(api_key=openai_api_key())
         return self._client
 
     async def transcribe_audio(

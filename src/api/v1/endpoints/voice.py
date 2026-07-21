@@ -25,6 +25,46 @@ from src.services.voice.tts_service import TTSService
 router = APIRouter()
 
 
+@router.get("/health")
+async def voice_health(
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Report whether voice sessions can actually work.
+
+    Exists because a bad API key used to fail silently: the agent simply never
+    spoke, and the UI sat on "preparing" forever with nothing to explain why.
+    Any signed-in user can call this — it returns booleans and vendor error
+    messages, never a key.
+    """
+    from src.services.data.secret_service import get_secret
+
+    problems: list[str] = []
+
+    openai_key = await get_secret(db, "openai_api_key")
+    if not openai_key:
+        problems.append(
+            "No OpenAI API key configured — speech and conversation are unavailable."
+        )
+    else:
+        try:
+            from openai import AsyncOpenAI
+            await AsyncOpenAI(api_key=openai_key).models.list()
+        except Exception as exc:
+            problems.append(f"OpenAI rejected the API key: {type(exc).__name__}")
+
+    livekit_key = await get_secret(db, "livekit_api_key")
+    livekit_secret = await get_secret(db, "livekit_api_secret")
+    if not livekit_key or not livekit_secret:
+        problems.append("LiveKit credentials are not configured — voice rooms cannot start.")
+
+    return {
+        "ok": not problems,
+        "problems": problems,
+        "detail": problems[0] if problems else "Voice services are configured.",
+    }
+
+
 @router.post("/token", response_model=VoiceTokenResponse)
 async def get_voice_token(
     request: VoiceTokenRequest,

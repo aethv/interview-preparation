@@ -6,6 +6,7 @@ import instructor
 from pydantic import BaseModel, Field
 
 from src.core.config import settings
+from src.core.secrets import openai_api_key
 from src.services.execution.sandbox_service import SandboxService, Language as SandboxLanguage
 
 
@@ -50,7 +51,7 @@ class CodeAnalyzer:
 
     def _get_openai_client(self):
         if self._openai_client is None:
-            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            client = AsyncOpenAI(api_key=openai_api_key())
             self._openai_client = instructor.patch(client)
         return self._openai_client
 

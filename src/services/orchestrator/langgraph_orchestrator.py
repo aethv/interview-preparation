@@ -13,11 +13,13 @@ from openai import AsyncOpenAI
 import instructor
 
 from src.core.config import settings
+from src.core.secrets import openai_api_key
 from src.services.analysis.response_analyzer import ResponseAnalyzer
 from src.services.analysis.code_analyzer import CodeAnalyzer
 from src.services.execution.sandbox_service import SandboxService
 from src.services.analysis.feedback_generator import FeedbackGenerator
 from src.services.logging.interview_logger import InterviewLogger
+from src.services.logging.token_usage import track_usage
 
 from src.services.orchestrator.types import InterviewState
 from src.services.orchestrator.graph import create_interview_graph
@@ -53,7 +55,7 @@ class LangGraphInterviewOrchestrator:
 
     def _get_openai_client(self):
         if self._openai_client is None:
-            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            client = AsyncOpenAI(api_key=openai_api_key())
             self._openai_client = instructor.patch(client)
         return self._openai_client
 
@@ -142,7 +144,10 @@ class LangGraphInterviewOrchestrator:
         # LangGraph handles checkpointing internally via MemorySaver for graph execution
         # MemorySaver isolates state by thread_id, so each interview gets its own state
         try:
-            final_state = await graph.ainvoke(state, config)
+            # Accounts for every LLM call made inside this turn; logs a per-role
+            # breakdown on exit so cost per turn is measurable, not estimated.
+            with track_usage(interview_id=interview_id):
+                final_state = await graph.ainvoke(state, config)
         except Exception as e:
             logger.error(
                 f"Graph execution failed for interview {interview_id}: {e}", exc_info=True

@@ -1,5 +1,6 @@
 from datetime import datetime
 from sqlalchemy import String, Text, DateTime, Boolean, func, Integer
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.core.database import Base
@@ -13,6 +14,10 @@ class EnglishTopic(Base):
     skill_focus: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     level: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     scenario_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    # Optional list of pickable scenes:
+    # [{id, title, your_role, ai_role, setting, goal, opening_line}]
+    # Empty/None means the session starts straight from scenario_prompt.
+    scenes: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     key_vocabulary: Mapped[str | None] = mapped_column(Text, nullable=True)
     evaluation_criteria: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str | None] = mapped_column(String(500), nullable=True)

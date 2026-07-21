@@ -42,3 +42,9 @@ class UserAdminResponse(BaseModel):
 
 class PromoteUserRequest(BaseModel):
     is_admin: bool
+
+
+class SecretUpdate(BaseModel):
+    """Write-only payload for storing an API key."""
+
+    value: str = Field(..., min_length=8, description="The raw secret; never returned by any endpoint")

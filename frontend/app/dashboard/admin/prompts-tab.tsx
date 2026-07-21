@@ -8,6 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Loader2, Pencil, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { ExpandableText } from '@/components/admin/expandable-text';
+import { PracticePromptsPanel } from '@/components/admin/practice-prompts-panel';
 
 // ── Static prompt metadata ─────────────────────────────────────────────────────
 
@@ -251,29 +253,6 @@ function TypeBadge({ type }: { type: PromptType }) {
 
 // ── Expandable text cell ───────────────────────────────────────────────────────
 
-function ExpandableText({ text, maxChars = 80 }: { text: string; maxChars?: number }) {
-  const [expanded, setExpanded] = useState(false);
-  if (!text) return <span className="text-muted-foreground/40 text-xs">—</span>;
-  const needsTrunc = text.length > maxChars;
-  return (
-    <span className="text-xs leading-relaxed">
-      {expanded || !needsTrunc ? text : text.slice(0, maxChars)}
-      {needsTrunc && (
-        <>
-          {!expanded && '…'}
-          {' '}
-          <button
-            className="text-blue-500 hover:underline whitespace-nowrap font-medium"
-            onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
-          >
-            {expanded ? 'less' : 'more'}
-          </button>
-        </>
-      )}
-    </span>
-  );
-}
-
 // ── Sort helpers ───────────────────────────────────────────────────────────────
 
 type SortKey = 'id' | 'name' | 'variable' | 'type' | 'description' | 'prompt';
@@ -425,6 +404,13 @@ export function PromptsTab() {
 
   return (
     <>
+      <PracticePromptsPanel />
+
+      <h3 className="text-base font-semibold mt-2">System prompts</h3>
+      <p className="text-sm text-muted-foreground mb-4">
+        Orchestrator, scraping, and analysis prompts. Practice sessions use the topic prompts above.
+      </p>
+
       <div className="rounded-md border overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="border-b bg-muted/40">
@@ -484,6 +470,7 @@ export function PromptsTab() {
           isSaving={savingKey === editing.key}
         />
       )}
+
     </>
   );
 }
