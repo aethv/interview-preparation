@@ -28,6 +28,7 @@ import { ExpandableText } from '@/components/admin/expandable-text';
 import { SessionPromptPreview } from '@/components/admin/session-prompt-preview';
 import { SceneEditor } from '@/components/admin/scene-editor';
 import { getLanguageFlag } from '@/components/interview/session-type-badge';
+import { DataTransferButtons } from '@/components/admin/data-transfer-buttons';
 
 /** Flag + name for a topic's target language. */
 function LanguageTag({ language }: { language?: string | null }) {
@@ -1051,9 +1052,12 @@ export function EnglishTopicsTab() {
           </SelectContent>
         </Select>
 
-        <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
-          <Upload className="h-3.5 w-3.5 mr-1" /> Import
-        </Button>
+        <DataTransferButtons
+          dataset="language_topics"
+          label="language-topics"
+          invalidateKeys={['english-topics']}
+          crawlerImport={{ label: 'From URL or document', onSelect: () => setImportOpen(true) }}
+        />
         <Button size="sm" onClick={() => setEditTarget('new')}>
           <Plus className="h-3.5 w-3.5 mr-1" /> Add
         </Button>

@@ -8,9 +8,9 @@
   <img src="frontend/public/resumes.png" alt="Resumes Page" width="100%"/>
 </div>
 
-**Problem:** Traditional technical interview practice often lacks realism, immediate feedback, and interactive voice-based engagement.
+**Problem:** Traditional interview and language practice often lacks realism, immediate feedback, and interactive voice-based engagement.
 
-**Solution:** InterviewLab delivers AI-driven technical interviews using real-time voice conversations, live code execution, and in-depth feedback, powered by LangGraph and LiveKit.
+**Solution:** InterviewLab delivers AI-driven mock interviews, coding drills, and spoken language practice using real-time voice, live code execution, and in-depth feedback — powered by LangGraph and LiveKit.
 
 ---
 
@@ -20,12 +20,62 @@ Portfolio Project — Production-ready codebase demonstrating AI system architec
 
 ## Aim
 
-Provide candidates with realistic interview practice through:
+Provide candidates with realistic practice through:
 
-- **Natural voice conversations** with AI interviewer
-- **Live code execution** in isolated sandbox
-- **Comprehensive feedback** on communication, technical knowledge, problem-solving, and code quality
+- **Natural voice conversations** with an AI partner (interviewer or language coach)
+- **Live code execution** in an isolated sandbox
+- **Mode-specific feedback** — interview skills, coding review, or language fluency/grammar/vocabulary
 - **Resume-based questions** tailored to candidate background
+- **Curated practice topics** for coding drills and spoken language scenarios
+
+## Features
+
+### Session modes
+
+Every session is one of three modes (`session_mode`):
+
+| Mode | Purpose | Voice | Code sandbox |
+| ---- | ------- | ----- | ------------ |
+| **`interview`** | Full mock technical interview from a resume (+ optional job description) | Yes | Yes |
+| **`code_practice`** | Focused coding drill on a curated problem | Yes | Yes |
+| **`language_practice`** | Spoken conversation in a target language (English, Japanese, …) | Yes | No |
+
+Legacy rows without `session_mode` are classified from title/job-description markers; older `english_practice` values normalize to `language_practice`.
+
+### Mock interviews
+
+- Upload a PDF resume → AI extracts skills, experience, and topics
+- Start a voice interview guided by a LangGraph state machine (intro → exploration → technical → closing)
+- Question bank search feeds relevant follow-ups
+- Submit code during the session; Docker sandbox runs it and the agent reviews quality
+- End-of-session feedback: communication, technical knowledge, problem-solving, code quality
+
+### Practice hub (`/dashboard/practice`)
+
+**Language practice**
+
+- Topic catalog filterable by target language, skill focus (Speaking, Writing, Listening, Grammar, Vocabulary), and level
+- Optional **scenes** (role, setting, goal, opening line) so the learner picks a concrete situation
+- Live coaching: corrections and vocabulary tips ride along on each turn
+- End-of-session language feedback: fluency, grammar, vocabulary, task completion, phrases to learn
+
+**Code practice**
+
+- Problem catalog filterable by category and difficulty
+- Same voice + sandbox loop as interviews, scoped to one problem and rubric
+
+### Dashboard & analytics
+
+- Session history with type badges (Interview / Code / language flag)
+- Skill averages, progression charts, and multi-interview comparison
+- Language sessions surface a dedicated performance breakdown
+
+### Admin
+
+- LLM model / temperature / TTS / skill-weight configuration
+- Practice languages list
+- Question bank, language topics, code topics, and prompt management
+- User roles and API key management
 
 ## High-Level Architecture
 
@@ -116,6 +166,8 @@ sequenceDiagram
     end
 ```
 
+Practice sessions reuse the same voice loop. The orchestrator branches on `session_mode`: language practice skips the sandbox and uses language-specific prompts/feedback; code practice scopes the conversation to a single problem.
+
 ### State Management
 
 - **LangGraph MemorySaver**: In-memory state per interview (`thread_id`)
@@ -128,10 +180,11 @@ sequenceDiagram
 ### Strengths
 
 - ✅ **Real-time voice** with <3s latency
+- ✅ **Three session modes** (interview, code practice, language practice)
 - ✅ **State persistence** via checkpoints
 - ✅ **Concurrent interviews** (isolated by thread_id)
 - ✅ **Code execution** in isolated Docker containers
-- ✅ **Comprehensive feedback** with skill breakdowns
+- ✅ **Mode-specific feedback** with skill breakdowns
 
 ## Project Structure
 
@@ -141,21 +194,21 @@ InterviewLab/
 │   ├── agents/            # LiveKit agent logic
 │   ├── api/               # REST API implementation
 │   │   └── v1/
-│   │       └── endpoints/ # Endpoints for interviews, resumes, voice, sandbox
-│   ├── core/              # Configuration, database, and authentication utilities
-│   ├── models/            # Database models for core entities
+│   │       └── endpoints/ # interviews, resumes, voice, sandbox, practice topics, admin
+│   ├── core/              # Config, database, auth, session_modes
+│   ├── models/            # Interviews, resumes, practice topics, question bank, …
 │   ├── schemas/           # Pydantic schemas for data validation
 │   └── services/          # Business logic and subsystems
 │       ├── analysis/      # Interview response and code analysis
-│       ├── analytics/     # Analytics functionality
-│       ├── data/          # Checkpointing and state management
+│       ├── analytics/     # Skill progression and comparison
+│       ├── data/          # Checkpoints, topics, question bank
 │       ├── execution/     # Secure code sandboxing
 │       ├── logging/       # Interview activity logging
-│       ├── orchestrator/  # State orchestration using LangGraph
+│       ├── orchestrator/  # LangGraph flow (interview + practice personas)
 │       └── voice/         # LiveKit voice management
 ├── frontend/              # Frontend (Next.js + React)
-│   ├── app/              # App routing and authentication
-│   ├── components/       # UI components (interview, analytics, UI kit)
+│   ├── app/              # Auth, dashboard (interviews, practice, admin, resumes, …)
+│   ├── components/       # Interview, practice, analytics, admin UI
 │   ├── lib/              # API client and store utilities
 │   └── hooks/            # Custom React hooks
 ├── docs/                  # Documentation and guides

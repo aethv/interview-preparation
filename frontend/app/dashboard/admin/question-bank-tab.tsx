@@ -21,6 +21,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { questionBankApi, Question, QuestionPreview, CreateQuestionBody } from '@/lib/api/question_bank';
+import { DataTransferButtons } from '@/components/admin/data-transfer-buttons';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -781,9 +782,12 @@ export function QuestionBankTab() {
           </SelectContent>
         </Select>
 
-        <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
-          <Upload className="h-3.5 w-3.5 mr-1" /> Import
-        </Button>
+        <DataTransferButtons
+          dataset="question_bank"
+          label="question-bank"
+          invalidateKeys={['question-bank']}
+          crawlerImport={{ label: 'From URL or document', onSelect: () => setImportOpen(true) }}
+        />
         <Button size="sm" onClick={() => setEditTarget('new')}>
           <Plus className="h-3.5 w-3.5 mr-1" /> Add
         </Button>

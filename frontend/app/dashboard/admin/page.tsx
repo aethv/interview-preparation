@@ -25,6 +25,7 @@ import { EnglishTopicsTab } from './english-topics-tab';
 import { CodeTopicsTab } from './code-topics-tab';
 import { PromptsTab } from './prompts-tab';
 import { ApiKeysPanel } from '@/components/admin/api-keys-panel';
+import { DataTransferButtons } from '@/components/admin/data-transfer-buttons';
 
 // Group definitions — order matters for display
 const CONFIG_GROUPS: { label: string; keys: string[] }[] = [
@@ -513,6 +514,15 @@ export default function AdminPage() {
         </TabsList>
 
         <TabsContent value="config" className="space-y-4 mt-4">
+          <div className="flex justify-end gap-2">
+            {/* Settings and prompts only — API keys are never exported */}
+            <DataTransferButtons
+              dataset="agent_config"
+              label="agent-config"
+              invalidateKeys={['admin-config']}
+            />
+          </div>
+
           {/* Keys first: an unset OpenAI key is why the model list stays empty */}
           <ApiKeysPanel />
 
@@ -536,7 +546,14 @@ export default function AdminPage() {
           )}
         </TabsContent>
 
-        <TabsContent value="prompts" className="mt-4">
+        <TabsContent value="prompts" className="mt-4 space-y-4">
+          <div className="flex justify-end gap-2">
+            <DataTransferButtons
+              dataset="prompts"
+              label="prompts"
+              invalidateKeys={['admin-config']}
+            />
+          </div>
           <PromptsTab />
         </TabsContent>
 

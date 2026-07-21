@@ -1,6 +1,9 @@
 """Admin endpoints — agent config management and user administration."""
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+import logging
+from typing import Any
+
+from fastapi import APIRouter, Body, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -18,6 +21,8 @@ from src.schemas.admin import (
 )
 from src.services.orchestrator.config_service import AgentConfigService
 from src.core.secrets import openai_api_key
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -81,6 +86,46 @@ async def list_models(
         models.append(m.id)
 
     return {"vendor": vendor, "models": sorted(models)}
+
+
+# ── Export / import endpoints ─────────────────────────────────────────────────
+#
+# Import merges and skips duplicates: it never deletes or overwrites, so it is
+# safe to re-run. Secrets are excluded from every export.
+
+
+@router.get("/export/{dataset}")
+async def export_admin_dataset(
+    dataset: str,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Download one admin dataset as JSON."""
+    from src.services.data.admin_transfer import export_dataset
+
+    try:
+        return await export_dataset(db, dataset)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/import/{dataset}")
+async def import_admin_dataset(
+    dataset: str,
+    payload: Any = Body(...),
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Merge a previously exported dataset back in, skipping duplicates."""
+    from src.services.data.admin_transfer import import_dataset
+
+    try:
+        return await import_dataset(db, dataset, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Import failed")
+        raise HTTPException(status_code=500, detail=f"Import failed: {e}")
 
 
 # ── Secret endpoints ──────────────────────────────────────────────────────────

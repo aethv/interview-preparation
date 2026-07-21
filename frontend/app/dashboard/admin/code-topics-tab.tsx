@@ -29,6 +29,7 @@ import {
 import { buildCodePracticeJobDescription } from '@/lib/practice-session-prompts';
 import { ExpandableText } from '@/components/admin/expandable-text';
 import { SessionPromptPreview } from '@/components/admin/session-prompt-preview';
+import { DataTransferButtons } from '@/components/admin/data-transfer-buttons';
 
 // ── Progress sim ───────────────────────────────────────────────────────────────
 
@@ -1282,9 +1283,12 @@ export function CodeTopicsTab() {
               Delete {checkedIds.size}
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
-            <Upload className="h-3.5 w-3.5 mr-1" /> Import
-          </Button>
+          <DataTransferButtons
+            dataset="code_topics"
+            label="code-topics"
+            invalidateKeys={['code-topics']}
+            crawlerImport={{ label: 'From URL or document', onSelect: () => setImportOpen(true) }}
+          />
           <Button size="sm" onClick={() => setEditTarget('new')}>
             <Plus className="h-3.5 w-3.5 mr-1" /> Add
           </Button>
