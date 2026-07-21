@@ -59,6 +59,7 @@ export function EnglishSessionPanel({
   }
 
   const { scene, vocabulary = [], corrections = [], language_switches = [] } = data;
+  const language = data.target_language || 'English';
 
   return (
     <div className="h-full overflow-y-auto p-4 space-y-4">
@@ -66,7 +67,7 @@ export function EnglishSessionPanel({
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-2">
             <CardTitle className="text-sm">
-              {scene?.title || 'Conversation practice'}
+              {scene?.title || `${language} practice`}
             </CardTitle>
             <Badge variant="outline" className="text-xs font-normal shrink-0">
               {data.level}
@@ -140,10 +141,10 @@ export function EnglishSessionPanel({
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm">Say this in English</CardTitle>
+              <CardTitle className="text-sm">Say this in {language}</CardTitle>
               {data.english_only_streak > 0 && (
                 <span className="text-xs text-muted-foreground">
-                  {data.english_only_streak} turn{data.english_only_streak === 1 ? '' : 's'} in English
+                  {data.english_only_streak} turn{data.english_only_streak === 1 ? '' : 's'} in {language}
                 </span>
               )}
             </div>
@@ -159,7 +160,7 @@ export function EnglishSessionPanel({
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">
-                    Have a go at this one in English.
+                    Have a go at this one in {language}.
                   </p>
                 )}
               </div>

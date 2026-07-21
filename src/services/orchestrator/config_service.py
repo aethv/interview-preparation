@@ -97,6 +97,12 @@ _DEFAULTS: dict[str, tuple[Any, str]] = {
         0.20,
         "Weight of code quality score in overall score (0–1)",
     ),
+    "practice_languages": (
+        ["English", "Japanese", "Chinese", "Korean", "Spanish", "French", "Vietnamese"],
+        "Languages available for conversation practice. Admin-editable: add one here "
+        "and it appears in the topic form and the practice filter (content still "
+        "needs writing for it).",
+    ),
     "tts_voice": (
         "alloy",
         "OpenAI TTS voice (alloy, echo, fable, onyx, nova, shimmer)",

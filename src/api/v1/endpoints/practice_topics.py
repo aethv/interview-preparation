@@ -66,6 +66,7 @@ def _english_to_response(t) -> EnglishTopicResponse:
     return EnglishTopicResponse(
         id=t.id,
         title=t.title,
+        target_language=getattr(t, "target_language", None) or "English",
         skill_focus=t.skill_focus,
         level=t.level,
         scenario_prompt=t.scenario_prompt,
@@ -123,9 +124,39 @@ async def discover_feedback_english(body: DiscoverFeedbackRequest, _: User = Dep
     return {"ok": True}
 
 
+async def _language_options(db: AsyncSession) -> list[str]:
+    """Languages offered in the topic form.
+
+    The admin-configured list, plus any language already attached to a topic —
+    so removing a language from config never hides existing content.
+    """
+    from sqlalchemy import select as _select
+    from src.models.practice_topics import EnglishTopic
+    from src.services.orchestrator.config_service import AgentConfigService
+
+    config = await AgentConfigService.load(db)
+    configured = config.get("practice_languages") or ["English"]
+    if not isinstance(configured, list):
+        configured = ["English"]
+
+    in_use = (await db.execute(
+        _select(EnglishTopic.target_language).distinct()
+    )).scalars().all()
+
+    merged = [str(x) for x in configured if str(x).strip()]
+    for language in in_use:
+        if language and language not in merged:
+            merged.append(language)
+    return merged
+
+
 @english_router.get("/meta")
-async def get_english_meta():
-    return {"skill_focus_options": ENGLISH_SKILL_FOCUS, "level_options": ENGLISH_LEVELS}
+async def get_english_meta(db: AsyncSession = Depends(get_db)):
+    return {
+        "skill_focus_options": ENGLISH_SKILL_FOCUS,
+        "level_options": ENGLISH_LEVELS,
+        "language_options": await _language_options(db),
+    }
 
 
 @english_router.get("", response_model=EnglishTopicListResponse)
@@ -133,12 +164,16 @@ async def list_english_topics(
     skill_focus: Optional[str] = Query(None),
     level: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    target_language: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(_require_admin),
 ):
-    items, total = await svc.list_english_topics(db, skill_focus, level, search, page, per_page)
+    items, total = await svc.list_english_topics(
+        db, skill_focus, level, search, page, per_page,
+        target_language=target_language,
+    )
     return EnglishTopicListResponse(
         items=[_english_to_response(t) for t in items],
         total=total,
@@ -623,13 +658,15 @@ async def list_public_english_topics(
     skill_focus: Optional[str] = Query(None),
     level: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    target_language: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     items, total = await svc.list_english_topics(
-        db, skill_focus, level, search, page, per_page, active_only=True
+        db, skill_focus, level, search, page, per_page, active_only=True,
+        target_language=target_language,
     )
     return EnglishTopicListResponse(
         items=[_english_to_response(t) for t in items],
@@ -639,8 +676,15 @@ async def list_public_english_topics(
 
 
 @public_router.get("/english-topics/meta")
-async def get_public_english_meta(_: User = Depends(get_current_user)):
-    return {"skill_focus_options": ENGLISH_SKILL_FOCUS, "level_options": ENGLISH_LEVELS}
+async def get_public_english_meta(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    return {
+        "skill_focus_options": ENGLISH_SKILL_FOCUS,
+        "level_options": ENGLISH_LEVELS,
+        "language_options": await _language_options(db),
+    }
 
 
 @public_router.get("/code-topics", response_model=CodeTopicListResponse)

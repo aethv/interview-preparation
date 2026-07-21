@@ -29,12 +29,15 @@ async def list_english_topics(
     page: int = 1,
     per_page: int = 20,
     active_only: bool = False,
+    target_language: Optional[str] = None,
 ) -> tuple[list[EnglishTopic], int]:
     query = select(EnglishTopic)
     if skill_focus:
         query = query.where(EnglishTopic.skill_focus == skill_focus)
     if level:
         query = query.where(EnglishTopic.level == level)
+    if target_language:
+        query = query.where(EnglishTopic.target_language == target_language)
     if active_only:
         query = query.where(EnglishTopic.is_active.is_(True))
     if search:
@@ -58,6 +61,7 @@ async def list_english_topics(
 async def create_english_topic(db: AsyncSession, data: EnglishTopicCreate) -> EnglishTopic:
     topic = EnglishTopic(
         title=data.title,
+        target_language=data.target_language,
         skill_focus=data.skill_focus,
         level=data.level,
         scenario_prompt=data.scenario_prompt,

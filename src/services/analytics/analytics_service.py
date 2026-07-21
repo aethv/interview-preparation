@@ -6,7 +6,7 @@ from collections import defaultdict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from src.core.session_modes import MODE_ENGLISH_PRACTICE, is_english_practice
+from src.core.session_modes import MODE_LANGUAGE_PRACTICE, is_language_practice
 from src.models.interview import Interview
 from src.models.user import User
 
@@ -148,7 +148,7 @@ class InterviewAnalytics:
                 Interview.status == "completed",
                 # English practice is scored on language, not on the four
                 # interview skills — including it would plot zeros.
-                Interview.session_mode != MODE_ENGLISH_PRACTICE,
+                Interview.session_mode != MODE_LANGUAGE_PRACTICE,
             )
             .order_by(Interview.completed_at.asc())
         )
@@ -232,7 +232,7 @@ class InterviewAnalytics:
             .where(
                 Interview.user_id == user_id,
                 Interview.status == "completed",
-                Interview.session_mode != MODE_ENGLISH_PRACTICE,
+                Interview.session_mode != MODE_LANGUAGE_PRACTICE,
             )
         )
         interviews = result.scalars().all()
@@ -302,7 +302,7 @@ class InterviewAnalytics:
             select(Interview).where(
                 Interview.id.in_(interview_ids),
                 # Language sessions have no comparable skill scores
-                Interview.session_mode != MODE_ENGLISH_PRACTICE,
+                Interview.session_mode != MODE_LANGUAGE_PRACTICE,
             )
         )
         interviews = result.scalars().all()
@@ -374,9 +374,10 @@ class InterviewAnalytics:
         # English sessions carry language scores, not the four interview skills.
         # Return them under their own keys so the caller can render the right card
         # instead of showing four zeros.
-        if is_english_practice(getattr(interview, "session_mode", None)):
+        if is_language_practice(getattr(interview, "session_mode", None)):
             return {
-                "session_mode": MODE_ENGLISH_PRACTICE,
+                "session_mode": MODE_LANGUAGE_PRACTICE,
+                "target_language": feedback.get("target_language", "English"),
                 "fluency": {"score": feedback.get("fluency_score", 0.0)},
                 "grammar": {"score": feedback.get("grammar_score", 0.0)},
                 "vocabulary": {"score": feedback.get("vocabulary_score", 0.0)},

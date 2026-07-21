@@ -14,6 +14,7 @@ import { Collapsible, CollapsibleContent, CollapsibleHeader } from '@/components
 import { FileText, MessageSquare, Code, TrendingUp, CheckCircle2, XCircle, Loader2, AlertCircle, BarChart3, Target, Clock, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { resumesApi } from '@/lib/api/resumes';
+import { SessionTypeBadge, SessionTypeIcon } from '@/components/interview/session-type-badge';
 import { interviewsApi, Interview } from '@/lib/api/interviews';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -277,14 +278,21 @@ export default function DashboardPage() {
                     href={`/dashboard/interviews/${interview.id}`}
                     className="block p-3 border rounded-lg hover:bg-muted/50 transition-colors"
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <h4 className="font-medium text-sm">{interview.title}</h4>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {format(new Date(interview.created_at), 'MMM d, yyyy')}
-                        </p>
+                    <div className="flex items-center justify-between gap-3">
+                      <SessionTypeIcon
+                        session={interview}
+                        className="h-4 w-4 text-muted-foreground shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium text-sm truncate">{interview.title}</h4>
+                        <div className="flex items-center gap-2 mt-1">
+                          <SessionTypeBadge session={interview} className="text-[10px] py-0" />
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(interview.created_at), 'MMM d, yyyy')}
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right shrink-0">
                         <div className="text-xs font-medium">
                           {interview.status === 'completed' ? '✓' : interview.status === 'in_progress' ? '→' : '○'}
                         </div>

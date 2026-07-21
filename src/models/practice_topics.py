@@ -11,6 +11,12 @@ class EnglishTopic(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Language being practised. Table name stays english_topics for now; renaming
+    # it would break every existing query for no functional gain.
+    target_language: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="English",
+        server_default="English", index=True,
+    )
     skill_focus: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     level: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     scenario_prompt: Mapped[str] = mapped_column(Text, nullable=False)

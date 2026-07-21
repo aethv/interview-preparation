@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { MessageSquare, Plus, Play, CheckCircle2, Clock, XCircle, Loader2, Trash2 } from 'lucide-react';
 import { interviewsApi, Interview } from '@/lib/api/interviews';
+import { SessionTypeBadge, SessionTypeIcon } from '@/components/interview/session-type-badge';
 import { resumesApi } from '@/lib/api/resumes';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -236,7 +237,7 @@ export default function InterviewsPage() {
               <CardHeader>
                 <div className="flex items-start justify-between">
                   <div className="flex items-center space-x-2 flex-1 min-w-0">
-                    <MessageSquare className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                    <SessionTypeIcon session={interview} className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                     <CardTitle className="text-lg truncate">{interview.title}</CardTitle>
                   </div>
                   <Button
@@ -259,9 +260,12 @@ export default function InterviewsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  {getStatusBadge(interview.status)}
-                  <span className="text-sm text-muted-foreground">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <SessionTypeBadge session={interview} />
+                    {getStatusBadge(interview.status)}
+                  </div>
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">
                     {interview.turn_count} turns
                   </span>
                 </div>

@@ -16,7 +16,8 @@ from src.core.session_modes import allows_code, is_english_practice
 from src.services.execution.sandbox_service import SandboxService, Language as SandboxLanguage
 from src.services.analysis.code_metrics import get_code_metrics
 from src.services.orchestrator.english_practice import (
-    ENGLISH_PARTNER_RULES,
+    get_partner_rules,
+    parse_session_brief,
     EnglishFeedback,
     EnglishTurn,
     build_evaluation_prompt as build_english_evaluation_prompt,
@@ -165,11 +166,18 @@ class ActionNodeMixin:
                 "next_message": default_greeting,
             }
 
+    @staticmethod
+    def _partner_rules_for(state: InterviewState) -> str:
+        """Partner persona in the topic's target language."""
+        language = parse_session_brief(
+            state.get("job_description")).get("target_language") or "English"
+        return get_partner_rules(language)
+
     async def _english_greeting(self, state: InterviewState) -> InterviewState:
         """Open an English practice session in character for the chosen scenario."""
         try:
             greeting = await self.llm_helper.call_llm_creative(
-                system_prompt=f"{get_system_prompt()}\n\n{ENGLISH_PARTNER_RULES}",
+                system_prompt=f"{get_system_prompt()}\n\n{self._partner_rules_for(state)}",
                 user_prompt=build_english_greeting_prompt(state),
             )
         except Exception as e:
@@ -205,7 +213,7 @@ class ActionNodeMixin:
         metadata: dict | None = None
         try:
             turn = await self.llm_helper.call_llm_with_instructor(
-                system_prompt=f"{get_system_prompt()}\n\n{ENGLISH_PARTNER_RULES}",
+                system_prompt=f"{get_system_prompt()}\n\n{self._partner_rules_for(state)}",
                 user_prompt=build_english_turn_prompt(
                     state, last_answer, conversation_context),
                 response_model=EnglishTurn,
@@ -515,7 +523,7 @@ class ActionNodeMixin:
         try:
             feedback = await self.llm_helper.call_llm_with_instructor(
                 system_prompt=(
-                    f"{ENGLISH_PARTNER_RULES}\n\n"
+                    f"{self._partner_rules_for(state)}\n\n"
                     "You are now giving end-of-session feedback, so you may step "
                     "out of the roleplay. Stay encouraging, specific and concrete."
                 ),
@@ -526,7 +534,9 @@ class ActionNodeMixin:
                 role="evaluation",
             )
             feedback_dict = feedback.model_dump()
-            feedback_dict["type"] = "english_practice"
+            feedback_dict["type"] = "language_practice"
+            feedback_dict["target_language"] = parse_session_brief(
+                state.get("job_description")).get("target_language", "English")
             feedback_dict["turn_count"] = state.get("turn_count", 0)
             spoken = build_spoken_feedback(feedback)
         except Exception as e:
@@ -538,7 +548,7 @@ class ActionNodeMixin:
             # Keep overall_score present even on failure so downstream consumers
             # treat this as real feedback instead of regenerating interview feedback.
             feedback_dict = {
-                "type": "english_practice",
+                "type": "language_practice",
                 "summary": spoken,
                 "overall_score": 0.5,
                 "turn_count": state.get("turn_count", 0),
@@ -563,7 +573,7 @@ class ActionNodeMixin:
         if is_english_practice(state.get("session_mode")):
             try:
                 closing = await self.llm_helper.call_llm_creative(
-                    system_prompt=f"{get_system_prompt()}\n\n{ENGLISH_PARTNER_RULES}",
+                    system_prompt=f"{get_system_prompt()}\n\n{self._partner_rules_for(state)}",
                     user_prompt=(
                         "Close the English practice conversation in character. "
                         "Thank them, mention one thing they said that you liked, "

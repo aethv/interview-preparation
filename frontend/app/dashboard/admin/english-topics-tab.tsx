@@ -27,6 +27,19 @@ import { buildEnglishPracticeJobDescription } from '@/lib/practice-session-promp
 import { ExpandableText } from '@/components/admin/expandable-text';
 import { SessionPromptPreview } from '@/components/admin/session-prompt-preview';
 import { SceneEditor } from '@/components/admin/scene-editor';
+import { getLanguageFlag } from '@/components/interview/session-type-badge';
+
+/** Flag + name for a topic's target language. */
+function LanguageTag({ language }: { language?: string | null }) {
+  const name = language || 'English';
+  const flag = getLanguageFlag(name);
+  return (
+    <Badge variant="secondary" className="gap-1 text-xs font-normal">
+      {flag && <span aria-hidden>{flag}</span>}
+      {name}
+    </Badge>
+  );
+}
 
 // ── Progress sim (shared pattern) ─────────────────────────────────────────────
 
@@ -119,17 +132,20 @@ function EditableCell({
 type TopicFormState = Omit<EnglishTopic, 'id' | 'created_at' | 'updated_at'>;
 
 function EnglishTopicFormDialog({
-  open, onClose, initial, skillFocusOptions, levelOptions,
+  open, onClose, initial, skillFocusOptions, levelOptions, languageOptions,
 }: {
   open: boolean;
   onClose: () => void;
   initial: EnglishTopic | null;
   skillFocusOptions: string[];
   levelOptions: string[];
+  /** From Agent Config → practice_languages, via the meta endpoint. */
+  languageOptions: string[];
 }) {
   const qc = useQueryClient();
   const [form, setForm] = useState<TopicFormState>({
     title: initial?.title ?? '',
+    target_language: initial?.target_language ?? 'English',
     skill_focus: initial?.skill_focus ?? (skillFocusOptions[0] ?? ''),
     level: initial?.level ?? 'Any',
     scenario_prompt: initial?.scenario_prompt ?? '',
@@ -185,7 +201,7 @@ function EnglishTopicFormDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center justify-between pr-6">
-            <DialogTitle>{initial ? 'Edit English Topic' : 'Add English Topic'}</DialogTitle>
+            <DialogTitle>{initial ? 'Edit Language Topic' : 'Add Language Topic'}</DialogTitle>
             <Button
               size="sm"
               variant="outline"
@@ -209,6 +225,19 @@ function EnglishTopicFormDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
+              <label className="text-xs font-medium">Language *</label>
+              <Select value={form.target_language} onValueChange={v => set('target_language')(v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {languageOptions.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Manage this list in Agent Config → practice_languages
+              </p>
+            </div>
+
+            <div className="space-y-1">
               <label className="text-xs font-medium">Skill Focus *</label>
               <Select value={form.skill_focus} onValueChange={v => set('skill_focus')(v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -231,7 +260,7 @@ function EnglishTopicFormDialog({
           <div className="space-y-1">
             <label className="text-xs font-medium">Scenario prompt *</label>
             <p className="text-xs text-muted-foreground">
-              Main instructions the AI tutor uses when a user starts this English practice session.
+              Main instructions the AI tutor uses when a user starts this practice session.
             </p>
             <Textarea
               value={form.scenario_prompt}
@@ -493,7 +522,7 @@ function EnglishImportDialog({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className={`max-w-4xl max-h-[95vh] flex flex-col transition-all duration-300`}>
         <DialogHeader>
-          <DialogTitle>Import English Topics</DialogTitle>
+          <DialogTitle>Import Language Topics</DialogTitle>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4">
@@ -919,6 +948,7 @@ export function EnglishTopicsTab() {
   const qc = useQueryClient();
   const [filterSkill, setFilterSkill] = useState('');
   const [filterLevel, setFilterLevel] = useState('');
+  const [filterLanguage, setFilterLanguage] = useState('');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -937,10 +967,11 @@ export function EnglishTopicsTab() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['english-topics', filterSkill, filterLevel, debouncedSearch, page],
+    queryKey: ['english-topics', filterSkill, filterLevel, filterLanguage, debouncedSearch, page],
     queryFn: () => englishTopicsApi.list({
       skill_focus: filterSkill || undefined,
       level: filterLevel || undefined,
+      target_language: filterLanguage || undefined,
       search: debouncedSearch || undefined,
       page,
       per_page: 20,
@@ -956,6 +987,8 @@ export function EnglishTopicsTab() {
 
   const skillFocusOptions = meta?.skill_focus_options ?? [];
   const levelOptions = meta?.level_options ?? [];
+  // Admin-managed in Agent Config → practice_languages
+  const languageOptions = meta?.language_options ?? ['English'];
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
   const pages = data?.pages ?? 1;
@@ -984,6 +1017,23 @@ export function EnglishTopicsTab() {
             </button>
           )}
         </div>
+
+        {languageOptions.length > 1 && (
+          <Select
+            value={filterLanguage || 'all'}
+            onValueChange={v => { setFilterLanguage(v === 'all' ? '' : v); setPage(1); }}
+          >
+            <SelectTrigger className="w-36 h-9"><SelectValue placeholder="All languages" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All languages</SelectItem>
+              {languageOptions.map(l => (
+                <SelectItem key={l} value={l}>
+                  {getLanguageFlag(l) ? `${getLanguageFlag(l)} ${l}` : l}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         <Select value={filterSkill || 'all'} onValueChange={v => { setFilterSkill(v === 'all' ? '' : v); setPage(1); }}>
           <SelectTrigger className="w-36 h-9"><SelectValue placeholder="All skills" /></SelectTrigger>
@@ -1025,6 +1075,7 @@ export function EnglishTopicsTab() {
                 <div className="flex items-start gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <LanguageTag language={t.target_language} />
                       <span className="text-xs font-mono text-muted-foreground">{t.skill_focus}</span>
                       <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${LEVEL_BADGE[t.level] ?? ''}`}>{t.level}</span>
                       {!t.is_active && <Badge variant="outline" className="text-xs">Inactive</Badge>}
@@ -1069,6 +1120,7 @@ export function EnglishTopicsTab() {
           initial={editTarget === 'new' ? null : editTarget}
           skillFocusOptions={skillFocusOptions}
           levelOptions={levelOptions}
+          languageOptions={languageOptions}
         />
       )}
       <EnglishImportDialog

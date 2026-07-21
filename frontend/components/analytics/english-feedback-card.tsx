@@ -7,6 +7,7 @@ import { ArrowRight, CheckCircle2, CircleDashed, Languages } from 'lucide-react'
 /** Shape returned by GET /interviews/{id}/skills for english_practice sessions. */
 export interface EnglishBreakdown {
   session_mode?: string;
+  target_language?: string;
   fluency?: { score: number };
   grammar?: { score: number };
   vocabulary?: { score: number };
@@ -30,7 +31,9 @@ export function getEnglishBreakdown(response: unknown): EnglishBreakdown | null 
   if (typeof response !== 'object' || response === null) return null;
 
   const inner = (response as BreakdownEnvelope).skill_breakdown ?? (response as EnglishBreakdown);
-  return inner?.session_mode === 'english_practice' ? inner : null;
+  // Accept the legacy value so completed sessions from before the rename render
+  return inner?.session_mode === 'language_practice'
+    || inner?.session_mode === 'english_practice' ? inner : null;
 }
 
 function ScoreBar({ label, score }: { label: string; score: number }) {
@@ -61,7 +64,9 @@ export function EnglishFeedbackCard({ breakdown }: { breakdown: EnglishBreakdown
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Language performance</CardTitle>
+            <CardTitle className="text-base">
+              {breakdown.target_language ? `${breakdown.target_language} performance` : 'Language performance'}
+            </CardTitle>
             {overall && (
               <span className="text-2xl font-semibold tabular-nums">
                 {Math.round(overall.score * 100)}%
@@ -87,7 +92,7 @@ export function EnglishFeedbackCard({ breakdown }: { breakdown: EnglishBreakdown
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Phrases you needed</CardTitle>
             <p className="text-xs text-muted-foreground">
-              You switched out of English {language_switches || phrases_to_learn.length} time
+              You switched out of {breakdown.target_language || 'English'} {language_switches || phrases_to_learn.length} time
               {(language_switches || phrases_to_learn.length) === 1 ? '' : 's'}. Here is what to say next time.
             </p>
           </CardHeader>

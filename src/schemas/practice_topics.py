@@ -34,6 +34,7 @@ class TopicScene(BaseModel):
 
 class EnglishTopicCreate(BaseModel):
     title: str
+    target_language: str = "English"
     skill_focus: str
     level: str
     scenario_prompt: str
@@ -46,6 +47,7 @@ class EnglishTopicCreate(BaseModel):
 
 class EnglishTopicUpdate(BaseModel):
     title: Optional[str] = None
+    target_language: Optional[str] = None
     skill_focus: Optional[str] = None
     level: Optional[str] = None
     scenario_prompt: Optional[str] = None
@@ -58,6 +60,7 @@ class EnglishTopicUpdate(BaseModel):
 class EnglishTopicResponse(BaseModel):
     id: int
     title: str
+    target_language: str = "English"
     skill_focus: str
     level: str
     scenario_prompt: str
@@ -89,6 +92,7 @@ class EnglishTopicListResponse(BaseModel):
 
 class EnglishTopicPreview(BaseModel):
     title: str
+    target_language: str = "English"
     skill_focus: str
     level: str
     scenario_prompt: str

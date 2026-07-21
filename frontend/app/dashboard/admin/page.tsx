@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { Loader2, Save, RotateCcw, Shield, ShieldOff, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { Loader2, Save, RotateCcw, Shield, ShieldOff, ChevronDown, ChevronUp, RefreshCw, Plus, X } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -31,6 +31,10 @@ const CONFIG_GROUPS: { label: string; keys: string[] }[] = [
   {
     label: 'LLM Models',
     keys: ['model', 'model_decision', 'model_conversation', 'model_evaluation'],
+  },
+  {
+    label: 'Practice Languages',
+    keys: ['practice_languages'],
   },
   {
     label: 'Temperatures',
@@ -173,6 +177,95 @@ function ModelSelector({
   );
 }
 
+/** Editor for config values that are lists, e.g. practice_languages.
+ *
+ * ConfigField only understands strings and numbers, so a JSON array rendered
+ * there would be uneditable — which is why this key was invisible in Admin.
+ */
+function ListField({
+  entry,
+  onSave,
+  isSaving,
+}: {
+  entry: ConfigEntry;
+  onSave: (key: string, value: unknown) => void;
+  isSaving: boolean;
+}) {
+  const current = Array.isArray(entry.value) ? (entry.value as string[]) : [];
+  const [items, setItems] = useState<string[]>(current);
+  const [draft, setDraft] = useState('');
+
+  const isDirty = JSON.stringify(items) !== JSON.stringify(current);
+
+  const add = () => {
+    const value = draft.trim();
+    if (!value) return;
+    // Case-insensitive check: "japanese" and "Japanese" must not both exist
+    if (items.some((i) => i.toLowerCase() === value.toLowerCase())) {
+      toast.error(`${value} is already in the list`);
+      return;
+    }
+    setItems([...items, value]);
+    setDraft('');
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium font-mono">{entry.key}</p>
+          {entry.description && (
+            <p className="text-xs text-muted-foreground">{entry.description}</p>
+          )}
+        </div>
+        {isDirty && (
+          <Button
+            size="sm"
+            onClick={() => onSave(entry.key, items)}
+            disabled={isSaving || items.length === 0}
+            className="ml-4 shrink-0"
+          >
+            {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+            <span className="ml-1">Save</span>
+          </Button>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((item) => (
+          <Badge key={item} variant="secondary" className="gap-1 font-normal">
+            {item}
+            <button
+              type="button"
+              onClick={() => setItems(items.filter((i) => i !== item))}
+              className="hover:text-destructive"
+              title={`Remove ${item}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+        ))}
+        {items.length === 0 && (
+          <p className="text-xs text-muted-foreground">List is empty.</p>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+          placeholder="Add an item, e.g. German"
+          className="h-9"
+        />
+        <Button size="sm" variant="outline" onClick={add} disabled={!draft.trim()}>
+          <Plus className="h-3.5 w-3.5 mr-1" />Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ConfigField({
   entry,
   onSave,
@@ -268,6 +361,12 @@ function ConfigGroup({
               {i > 0 && <Separator className="mb-5" />}
               {MODEL_KEYS.includes(entry.key) ? (
                 <ModelSelector
+                  entry={entry}
+                  onSave={onSave}
+                  isSaving={savingKey === entry.key}
+                />
+              ) : Array.isArray(entry.value) ? (
+                <ListField
                   entry={entry}
                   onSave={onSave}
                   isSaving={savingKey === entry.key}
@@ -408,7 +507,7 @@ export default function AdminPage() {
           <TabsTrigger value="config">Agent Config</TabsTrigger>
           <TabsTrigger value="prompts">Prompts</TabsTrigger>
           <TabsTrigger value="questions">Question Bank</TabsTrigger>
-          <TabsTrigger value="english">English Topics</TabsTrigger>
+          <TabsTrigger value="english">Language Topics</TabsTrigger>
           <TabsTrigger value="code">Code Topics</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
         </TabsList>

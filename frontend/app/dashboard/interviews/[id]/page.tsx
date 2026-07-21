@@ -27,6 +27,7 @@ import Link from 'next/link';
 import { CodeSandbox } from '@/components/interview/sandbox';
 import { EnglishSessionPanel } from '@/components/interview/english-session-panel';
 import { ConversationHistory } from '@/components/interview/conversation-history';
+import { SessionTypeBadge } from '@/components/interview/session-type-badge';
 import { MicLevelMeter } from '@/components/interview/mic-level-meter';
 import { showCodeEditor } from '@/lib/interview-session';
 import { getCameraPreference } from '@/lib/media-preferences';
@@ -428,8 +429,9 @@ export default function InterviewDetailPage() {
               </Link>
             </Button>
           )}
-          <div>
-            <h1 className="text-lg font-semibold">{interview.title}</h1>
+          <div className="flex items-center gap-2 min-w-0">
+            <h1 className="text-lg font-semibold truncate">{interview.title}</h1>
+            <SessionTypeBadge session={interview} />
           </div>
         </div>
         <div className="flex items-center space-x-2">

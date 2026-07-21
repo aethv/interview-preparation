@@ -25,6 +25,7 @@ import {
   practiceApi, EnglishTopic, CodeTopic, TopicScene,
 } from '@/lib/api/practice_topics';
 import { ScenePicker } from '@/components/practice/scene-picker';
+import { SessionTypeBadge } from '@/components/interview/session-type-badge';
 
 // ── Skill icons ────────────────────────────────────────────────────────────────
 
@@ -60,6 +61,10 @@ function EnglishTopicCard({ topic, onStart, starting }: {
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap mb-1">
+              <SessionTypeBadge
+                session={{ session_mode: 'language_practice' }}
+                language={topic.target_language}
+              />
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 {SKILL_ICON[topic.skill_focus]}
                 {topic.skill_focus}
@@ -130,6 +135,7 @@ function CodeTopicCard({ topic, onStart, starting }: {
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap mb-1">
+              <SessionTypeBadge session={{ session_mode: 'code_practice' }} />
               <Badge variant="outline" className="text-xs font-normal">{topic.category}</Badge>
               <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${LEVEL_COLOR[topic.difficulty] ?? ''}`}>
                 {topic.difficulty}
@@ -179,6 +185,7 @@ function EnglishPracticeTab() {
   const router = useRouter();
   const [filterSkill, setFilterSkill] = useState('');
   const [filterLevel, setFilterLevel] = useState('');
+  const [filterLanguage, setFilterLanguage] = useState('');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -196,10 +203,11 @@ function EnglishPracticeTab() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['practice-english', filterSkill, filterLevel, debouncedSearch, page],
+    queryKey: ['practice-english', filterSkill, filterLevel, filterLanguage, debouncedSearch, page],
     queryFn: () => practiceApi.listEnglishTopics({
       skill_focus: filterSkill || undefined,
       level: filterLevel || undefined,
+      target_language: filterLanguage || undefined,
       search: debouncedSearch || undefined,
       page,
       per_page: 12,
@@ -212,9 +220,10 @@ function EnglishPracticeTab() {
   const startMutation = useMutation({
     mutationFn: ({ topic, scene }: { topic: EnglishTopic; scene: TopicScene | null }) =>
       interviewsApi.create({
-        title: scene ? `English: ${topic.title} — ${scene.title}` : `English: ${topic.title}`,
+        title: `${topic.target_language || 'English'}: ${topic.title}` +
+          (scene ? ` — ${scene.title}` : ''),
         job_description: buildEnglishPracticeJobDescription(topic, scene),
-        session_mode: 'english_practice',
+        session_mode: 'language_practice',
       }),
     onSuccess: (interview, { topic }) => {
       toast.success(`Starting "${topic.title}"…`);
@@ -243,6 +252,8 @@ function EnglishPracticeTab() {
 
   const skillOptions = meta?.skill_focus_options ?? [];
   const levelOptions = meta?.level_options ?? [];
+  // Admin-managed list from config; hidden entirely while only English exists
+  const languageOptions = meta?.language_options ?? [];
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
   const pages = data?.pages ?? 1;
@@ -265,6 +276,19 @@ function EnglishPracticeTab() {
             </button>
           )}
         </div>
+
+        {languageOptions.length > 1 && (
+          <Select
+            value={filterLanguage || 'all'}
+            onValueChange={v => { setFilterLanguage(v === 'all' ? '' : v); setPage(1); }}
+          >
+            <SelectTrigger className="w-36 h-9"><SelectValue placeholder="All languages" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All languages</SelectItem>
+              {languageOptions.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
 
         <Select value={filterSkill || 'all'} onValueChange={v => { setFilterSkill(v === 'all' ? '' : v); setPage(1); }}>
           <SelectTrigger className="w-36 h-9"><SelectValue placeholder="All skills" /></SelectTrigger>
