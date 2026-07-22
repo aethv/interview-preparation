@@ -146,13 +146,23 @@ class LangGraphInterviewOrchestrator:
         try:
             # Accounts for every LLM call made inside this turn; logs a per-role
             # breakdown on exit so cost per turn is measurable, not estimated.
-            with track_usage(interview_id=interview_id):
+            with track_usage(interview_id=interview_id) as usage:
                 final_state = await graph.ainvoke(state, config)
         except Exception as e:
             logger.error(
                 f"Graph execution failed for interview {interview_id}: {e}", exc_info=True
             )
             raise ValueError(f"Graph execution failed: {e}") from e
+
+        # Add this turn's tokens/cost to the interview row now — per turn, not on
+        # completion — so a session the user pauses or abandons still carries the
+        # cost it already incurred. Atomic increment, best-effort.
+        if self._db_session:
+            try:
+                from src.services.data.usage_persister import accumulate_usage
+                await accumulate_usage(self._db_session, interview_id, usage)
+            except Exception as e:
+                logger.warning(f"Usage accumulation skipped: {e}")
 
         # CRITICAL: Validate final_state still has correct interview_id
         final_interview_id = final_state.get("interview_id")

@@ -103,6 +103,17 @@ _DEFAULTS: dict[str, tuple[Any, str]] = {
         "and it appears in the topic form and the practice filter (content still "
         "needs writing for it).",
     ),
+    "model_pricing": (
+        {
+            "gpt-5.4-nano": {"input": 0.20, "cached_input": 0.02, "output": 1.25},
+            "gpt-5.4-mini": {"input": 0.75, "cached_input": 0.075, "output": 4.50},
+            "gpt-5.4": {"input": 2.50, "cached_input": 0.25, "output": 15.00},
+            "gpt-4o-mini": {"input": 0.15, "cached_input": 0.075, "output": 0.60},
+            "gpt-4o": {"input": 2.50, "cached_input": 1.25, "output": 10.00},
+        },
+        "USD per 1M tokens per model, used for the session cost estimate. "
+        "Longest name match wins. Excludes speech and embeddings.",
+    ),
     "tts_voice": (
         "alloy",
         "OpenAI TTS voice (alloy, echo, fable, onyx, nova, shimmer)",

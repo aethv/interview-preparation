@@ -37,6 +37,10 @@ class InterviewResponse(BaseModel):
     job_description: Optional[str] = None
     feedback: Optional[dict] = None
     turn_count: int
+    # LLM usage accumulated across the session (chat only; excludes speech).
+    llm_calls: int = 0
+    llm_total_tokens: int = 0
+    llm_cost_usd: float = 0.0
     current_message: Optional[str] = Field(
         None, description="Current AI message to display")
     sandbox: Optional[dict] = Field(

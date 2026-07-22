@@ -28,6 +28,7 @@ import { CodeSandbox } from '@/components/interview/sandbox';
 import { EnglishSessionPanel } from '@/components/interview/english-session-panel';
 import { ConversationHistory } from '@/components/interview/conversation-history';
 import { SessionTypeBadge } from '@/components/interview/session-type-badge';
+import { formatCost } from '@/lib/format-cost';
 import { MicLevelMeter } from '@/components/interview/mic-level-meter';
 import { showCodeEditor } from '@/lib/interview-session';
 import { getCameraPreference } from '@/lib/media-preferences';
@@ -432,6 +433,14 @@ export default function InterviewDetailPage() {
           <div className="flex items-center gap-2 min-w-0">
             <h1 className="text-lg font-semibold truncate">{interview.title}</h1>
             <SessionTypeBadge session={interview} />
+            {(interview.llm_cost_usd ?? 0) > 0 && (
+              <span
+                className="text-xs text-muted-foreground whitespace-nowrap"
+                title={`${interview.llm_calls ?? 0} calls · ${(interview.llm_total_tokens ?? 0).toLocaleString()} tokens · approximate, chat only`}
+              >
+                ~{formatCost(interview.llm_cost_usd)}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center space-x-2">

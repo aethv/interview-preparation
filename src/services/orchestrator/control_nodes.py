@@ -5,14 +5,13 @@ decide_next_action, and finalize_turn.
 """
 
 import logging
-import json
 from typing import TYPE_CHECKING
 from datetime import datetime
 from openai import AsyncOpenAI
 
 from src.core.session_modes import is_english_practice
 from src.services.orchestrator.types import (
-    InterviewState, NextActionDecision, EnglishNextActionDecision
+    InterviewState, InterviewTurnDecision, LanguageTurnDecision,
 )
 from src.services.orchestrator.context_builders import (
     build_decision_context, build_control_context
@@ -23,7 +22,7 @@ from src.services.orchestrator.constants import (
     get_temperature_analytical, get_temperature_balanced, get_model,
     get_decision_model,
 )
-from src.services.orchestrator.intent_detection import detect_user_intent
+from src.services.orchestrator.intent_detection import INTENT_TAXONOMY
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +71,35 @@ DECISION PRINCIPLES:
 - Move to evaluation when the scenario has played out or the learner asks for feedback
 
 Choose: greeting, question, followup, evaluation, closing"""
+
+
+# Merged system prompts: intent taxonomy + routing rubric in one static block.
+# One structured call per turn now does intent detection, answer scoring and
+# action routing together. The combined prefix is >1024 tokens, so OpenAI's
+# prompt cache finally applies to it.
+INTERVIEW_TURN_SYSTEM_PROMPT = (
+    "You are an experienced interviewer. In a single step you (a) read the "
+    "user's last message and identify their intent, (b) rate how good their "
+    "last answer was, and (c) choose the next action.\n\n"
+    + INTENT_TAXONOMY
+    + "\n"
+    + INTERVIEW_DECISION_SYSTEM_PROMPT
+    + "\n\nReturn intent_type, intent_confidence, intent_metadata, "
+    "answer_quality (0.0 if there was no prior question), action, reasoning."
+)
+
+ENGLISH_TURN_SYSTEM_PROMPT = (
+    "You are a warm English conversation partner. In a single step you (a) read "
+    "the learner's last message and identify their intent, and (b) choose the "
+    "next action. This is spoken practice, never an interview or a coding "
+    "session.\n\n"
+    "INTENT TYPES: change_topic, clarify, stop, continue, no_intent. Use "
+    "no_intent for an ordinary reply; use the others only when the learner "
+    "clearly wants to redirect, is confused, wants to finish, or is agreeing to "
+    "continue.\n\n"
+    + ENGLISH_DECISION_SYSTEM_PROMPT
+    + "\n\nReturn intent_type, intent_confidence, intent_metadata, action, reasoning."
+)
 
 
 class ControlNodeMixin:
@@ -143,127 +171,104 @@ class ControlNodeMixin:
         return updates
 
     async def detect_intent_node(self, state: InterviewState) -> InterviewState:
-        """Detect user intent from their last response."""
-        if not state.get("last_response"):
-            return {
-                "active_user_request": None,
-                "last_node": "detect_intent",
-            }
+        """No-op passthrough.
 
-        updates = await detect_user_intent(
-            state,
-            self.openai_client,
-            self.interview_logger
-        )
-
-        return {
-            **updates,
-            "last_node": "detect_intent",
-        }
+        Intent detection was merged into decide_next_action_node (one structured
+        call now covers intent + scoring + routing). This node is kept only so
+        the existing graph edges do not need to change; it makes no LLM call.
+        """
+        return {"last_node": "detect_intent"}
 
     async def decide_next_action_node(self, state: InterviewState) -> InterviewState:
-        """Decide which action node to execute next using LLM decision."""
+        """Intent + answer quality + next action, in a single structured call.
 
-        active_request = state.get("active_user_request")
-        if active_request and self.interview_logger:
-            self.interview_logger.log_intent_detection(
-                state.get("last_response", ""),
-                active_request
-            )
-
+        Replaces three sequential LLM calls per turn (intent detection, answer
+        scoring, action routing) with one. Fewer round-trips means lower latency
+        and cost, and the merged system prompt is large enough to hit OpenAI's
+        prompt cache.
+        """
         decision_ctx = build_decision_context(state, self.interview_logger)
-
-        answer_quality = 0.0
-        if state.get("last_response") and state.get("current_question"):
-            try:
-                analysis = await self.response_analyzer.analyze_answer(
-                    state.get("current_question", ""),
-                    state.get("last_response", ""),
-                    {"resume_context": state.get("resume_structured", {})},
-                )
-                answer_quality = analysis.quality_score
-            except Exception:
-                pass
-
-        # Summary + last few truncated messages instead of 20 full ones: the
-        # decision only needs recent flow, and this stops the prompt growing
-        # linearly with session length.
         conversation_text = build_control_context(state)
-
-        intent_info = ""
-        if active_request:
-            intent_info = f"\nDetected User Intent: {active_request.get('type')} (confidence: {active_request.get('confidence', 0):.2f})\nUser's last response: {state.get('last_response', '')}\n"
-            if active_request.get('metadata'):
-                intent_info += f"Intent metadata: {json.dumps(active_request.get('metadata'), indent=2)}\n"
-
         english_mode = is_english_practice(state.get("session_mode"))
+        last_response = state.get("last_response", "") or ""
 
-        # Static rubric lives in the system message (stable prefix), only
-        # per-turn state goes in the user message.
         if english_mode:
-            # English practice: conversation partner, not interviewer. No code
-            # actions are offered here and none exist in EnglishNextActionDecision.
-            decision_system_prompt = ENGLISH_DECISION_SYSTEM_PROMPT
-            decision_model = EnglishNextActionDecision
+            system_prompt = ENGLISH_TURN_SYSTEM_PROMPT
+            decision_model = LanguageTurnDecision
             state_block = (
                 f"- Turn: {decision_ctx['turn']}, Phase: {decision_ctx['phase']}\n"
                 f"- Exchanges so far: {decision_ctx['questions_count']}"
             )
         else:
-            decision_system_prompt = INTERVIEW_DECISION_SYSTEM_PROMPT
-            decision_model = NextActionDecision
+            system_prompt = INTERVIEW_TURN_SYSTEM_PROMPT
+            decision_model = InterviewTurnDecision
             state_block = (
                 f"- Turn: {decision_ctx['turn']}, Phase: {decision_ctx['phase']}\n"
-                f"- Questions: {decision_ctx['questions_count']}, Quality: {answer_quality:.2f}\n"
+                f"- Questions: {decision_ctx['questions_count']}\n"
                 f"- Sandbox: {'Active' if state.get('sandbox', {}).get('is_active') else 'Inactive'}\n"
                 f"- Code: {'Yes' if state.get('current_code') else 'No'}"
             )
 
+        last_question = state.get("current_question") or "None (start of session)"
         prompt = f"""CONVERSATION:
 {conversation_text}
 
 STATE:
 {state_block}
-{intent_info}
 Topics: {', '.join(decision_ctx.get('topics_covered', []) or ['None'])}
 
-Choose the next action."""
+LAST QUESTION: {last_question}
+USER'S LAST MESSAGE: "{last_response}"
+
+Identify their intent, {'' if english_mode else 'rate their last answer, '}and choose the next action."""
 
         try:
             decision = await self.llm_helper.call_llm_with_instructor(
-                system_prompt=decision_system_prompt,
+                system_prompt=system_prompt,
                 user_prompt=prompt,
                 response_model=decision_model,
                 temperature=get_temperature_balanced(),
                 model=get_decision_model(),
-                role="routing",
+                role="turn_decision",
             )
-
-            # Trust LLM decision - it has full context and can avoid repetition naturally
-            return {
-                "next_node": decision.action,
-                "last_node": "decide_next_action",
-                "answer_quality": answer_quality,
-            }
-
         except Exception as e:
-            logger.warning(f"LLM decision failed: {e}, using fallback")
-            # Simple fallback - just default to question to keep conversation flowing
-            conversation_history = state.get("conversation_history", [])
-            has_assistant_messages = any(
-                msg.get("role") == "assistant" for msg in conversation_history
+            logger.warning(f"Turn decision failed: {e}, using fallback")
+            has_assistant = any(
+                m.get("role") == "assistant"
+                for m in state.get("conversation_history", [])
             )
-
-            if not has_assistant_messages:
-                action = "greeting"
-            else:
-                action = "question"
-
             return {
-                "next_node": action,
+                "next_node": "greeting" if not has_assistant else "question",
+                "active_user_request": None,
+                "answer_quality": 0.0,
                 "last_node": "decide_next_action",
-                "answer_quality": answer_quality,
             }
+
+        # Reconstruct the intent record downstream nodes read (write_code,
+        # clarify). Only high-confidence intents become an active request, matching
+        # the previous detect_user_intent threshold.
+        active_request = None
+        if last_response and decision.intent_confidence > 0.7 \
+                and decision.intent_type != "no_intent":
+            active_request = {
+                "type": decision.intent_type,
+                "confidence": decision.intent_confidence,
+                "extracted_from": last_response,
+                "turn": state.get("turn_count", 0),
+                "metadata": getattr(decision, "intent_metadata", {}) or {},
+            }
+            if self.interview_logger:
+                self.interview_logger.log_intent_detection(last_response, active_request)
+
+        answer_quality = float(getattr(decision, "answer_quality", 0.0) or 0.0)
+
+        return {
+            "next_node": decision.action,
+            "active_user_request": active_request,
+            "detected_intents": [active_request] if active_request else [],
+            "answer_quality": answer_quality,
+            "last_node": "decide_next_action",
+        }
 
     async def finalize_turn_node(self, state: InterviewState) -> InterviewState:
         """Finalize the turn by writing conversation history and updating summary.

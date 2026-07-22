@@ -11,13 +11,14 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleHeader } from '@/components/ui/collapsible';
-import { FileText, MessageSquare, Code, TrendingUp, CheckCircle2, XCircle, Loader2, AlertCircle, BarChart3, Target, Clock, ChevronDown } from 'lucide-react';
+import { FileText, MessageSquare, Code, TrendingUp, CheckCircle2, XCircle, Loader2, AlertCircle, BarChart3, Target, Clock, ChevronDown, DollarSign } from 'lucide-react';
 import Link from 'next/link';
 import { resumesApi } from '@/lib/api/resumes';
 import { SessionTypeBadge, SessionTypeIcon } from '@/components/interview/session-type-badge';
 import { interviewsApi, Interview } from '@/lib/api/interviews';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { formatCost } from '@/lib/format-cost';
 import { SkillAveragesCard } from '@/components/analytics/skill-averages-card';
 import { SkillProgressionChart } from '@/components/analytics/skill-progression-chart';
 import { InterviewSkillCard } from '@/components/analytics/interview-skill-card';
@@ -79,6 +80,8 @@ export default function DashboardPage() {
     ? Math.round(totalTurns / interviews.length) 
     : 0;
 
+  const totalCost = (interviews || []).reduce((sum, i) => sum + (i.llm_cost_usd ?? 0), 0);
+
   const avgScore = completedInterviews.length > 0
     ? completedInterviews.reduce((sum, i) => {
         const score = i.feedback?.overall_score || 0;
@@ -111,6 +114,12 @@ export default function DashboardPage() {
       value: `${Math.round(avgScore * 100)}%`,
       icon: Target,
       description: 'Based on completed',
+    },
+    {
+      title: 'Est. Cost',
+      value: formatCost(totalCost),
+      icon: DollarSign,
+      description: 'Approx LLM spend',
     },
     {
       title: 'Total Turns',
@@ -298,6 +307,7 @@ export default function DashboardPage() {
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {interview.turn_count} turns
+                          {(interview.llm_cost_usd ?? 0) > 0 && ` · ${formatCost(interview.llm_cost_usd)}`}
                         </div>
                       </div>
                     </div>

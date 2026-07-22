@@ -99,10 +99,15 @@ class InterviewAnalytics:
 
         avg_code_quality = sum(code_quality_scores) / len(code_quality_scores) if code_quality_scores else 0.0
 
+        # Estimated LLM spend across ALL sessions (including left/paused ones,
+        # since cost is accumulated per turn on the row).
+        total_cost = sum(float(getattr(i, "llm_cost_usd", 0) or 0) for i in interviews)
+
         return {
             "total_interviews": total,
             "completed_interviews": completed_count,
             "in_progress_interviews": len([i for i in interviews if i.status == "in_progress"]),
+            "total_llm_cost_usd": round(total_cost, 4),
             "average_turn_count": round(avg_turn_count, 1),
             "average_quality": round(avg_quality, 2),
             "average_code_quality": round(avg_code_quality, 2),
@@ -116,6 +121,7 @@ class InterviewAnalytics:
                     "status": i.status,
                     "completed_at": i.completed_at.isoformat() if i.completed_at else None,
                     "quality_score": i.feedback.get("overall_score") if i.feedback and isinstance(i.feedback, dict) else None,
+                    "cost_usd": float(getattr(i, "llm_cost_usd", 0) or 0),
                 }
                 for i in completed[:5]
             ],

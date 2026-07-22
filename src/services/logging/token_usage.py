@@ -29,6 +29,9 @@ class UsageTotals:
     completion_tokens: int = 0
     cached_tokens: int = 0
     by_role: dict[str, dict[str, int]] = field(default_factory=dict)
+    # Per-model totals are what cost is computed from — different roles may run
+    # on different models with different rates.
+    by_model: dict[str, dict[str, int]] = field(default_factory=dict)
 
     @property
     def total_tokens(self) -> int:
@@ -108,5 +111,14 @@ def record_usage(model: str, role: str, raw_response: Any) -> None:
         bucket["prompt_tokens"] += prompt_tokens
         bucket["completion_tokens"] += completion_tokens
         bucket["cached_tokens"] += cached_tokens
+
+        model_bucket = totals.by_model.setdefault(
+            model, {"calls": 0, "prompt_tokens": 0,
+                    "completion_tokens": 0, "cached_tokens": 0},
+        )
+        model_bucket["calls"] += 1
+        model_bucket["prompt_tokens"] += prompt_tokens
+        model_bucket["completion_tokens"] += completion_tokens
+        model_bucket["cached_tokens"] += cached_tokens
     except Exception as e:  # pragma: no cover - accounting is best-effort
         logger.debug(f"Could not record token usage: {e}")

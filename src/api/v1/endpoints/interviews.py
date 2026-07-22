@@ -867,6 +867,10 @@ def _interview_to_response(interview: Interview, state: dict | None = None) -> I
         resume_context=interview.resume_context,
         feedback=interview.feedback,
         turn_count=interview.turn_count,
+        llm_calls=getattr(interview, "llm_calls", 0) or 0,
+        llm_total_tokens=(getattr(interview, "llm_prompt_tokens", 0) or 0)
+        + (getattr(interview, "llm_completion_tokens", 0) or 0),
+        llm_cost_usd=float(getattr(interview, "llm_cost_usd", 0) or 0),
         current_message=current_message,
         sandbox=sandbox_state,
         started_at=interview.started_at.isoformat() if interview.started_at else None,

@@ -84,6 +84,68 @@ METADATA FORMAT (dict, not string):
 - Otherwise: {} (empty dict)
 """
 
+
+# Just the taxonomy, reused by the merged decision call in control_nodes.
+INTENT_TAXONOMY = """INTENT TYPES (choose the user's GOAL):
+
+1. **write_code** - User wants to CREATE/WRITE code to demonstrate skills
+   Examples: "I'd like to write code", "Can I show you my approach?", "Let me code something"
+   NOT: Just mentioning code in an answer
+
+2. **review_code** - User wants to SHARE/DISCUSS existing code
+   Examples: "Here's my code", "Can you review this?", "I have code to show"
+   NOT: Asking to write new code
+
+3. **change_topic** - User wants to REDIRECT to a different topic
+   Examples: "Actually, let's talk about X", "Can we discuss Y instead?", "What about Z?"
+   KEY: Look for explicit redirection, not just a different answer
+
+4. **clarify** - User is CONFUSED and needs help understanding
+   Examples: "What do you mean?", "I don't understand", "Can you clarify?"
+   NOT: Just asking a follow-up question
+
+5. **technical_assessment** - User wants different interview format (coding questions)
+   Examples: "Give me coding questions", "I want technical assessment"
+
+6. **stop** - User wants to END the interview
+   Examples: "Let's stop", "That's enough", "I want to end"
+
+7. **continue** - User is AFFIRMING willingness to continue
+   Examples: "Yes", "Sure", "Okay", "Go ahead"
+
+8. **no_intent** - User is just ANSWERING normally (default)
+   Examples: Normal responses providing information
+
+DECISION FRAMEWORK:
+1. What is the user's GOAL? (DO something / SAY something / CHANGE something)
+2. What happens if we IGNORE this? (Breaks flow = request / Fine = answer)
+3. Does it require ACTION? (Yes = specific intent / No = no_intent)
+
+EDGE CASES:
+- User asks question back → clarify (if confused) or no_intent (if natural follow-up)
+- User mentions code in answer → no_intent (unless explicitly requesting to show/write code)
+- User says "I don't know" → clarify (if confused) or no_intent (if just answering)
+- Multiple intents possible → Choose the one requiring ACTION
+
+EXAMPLES:
+Q: "What challenges did you face?" → A: "Actually, let's talk about leadership" → change_topic (0.95)
+Q: "Tell me about your project" → A: "I'd like to write code to show you" → write_code (0.9)
+Q: "How did you solve that?" → A: "What do you mean by 'solve'?" → clarify (0.9)
+Q: "What tools did you use?" → A: "Python, Docker, Kubernetes" → no_intent (0.9)
+Q: "Tell me about microservices" → A: "I built them with Go. Can I show you the code?" → review_code (0.85)
+
+CONFIDENCE:
+- 0.9+: Very clear, explicit request
+- 0.7-0.89: Clear but some ambiguity
+- <0.7: Ambiguous → use no_intent
+
+METADATA FORMAT (dict, not string):
+- change_topic: {"topic": "leadership", "redirected_from": "challenges"}
+- write_code/review_code: {"language": "python", "context": "project_demo"}
+- clarify: {"unclear_term": "solve", "question_about": "last_question"}
+- Otherwise: {} (empty dict)
+"""
+
 if TYPE_CHECKING:
     from src.services.logging.interview_logger import InterviewLogger
 

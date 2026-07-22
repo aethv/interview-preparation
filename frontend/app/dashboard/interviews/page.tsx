@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { MessageSquare, Plus, Play, CheckCircle2, Clock, XCircle, Loader2, Trash2 } from 'lucide-react';
 import { interviewsApi, Interview } from '@/lib/api/interviews';
 import { SessionTypeBadge, SessionTypeIcon } from '@/components/interview/session-type-badge';
+import { formatCost } from '@/lib/format-cost';
 import { resumesApi } from '@/lib/api/resumes';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -267,6 +268,9 @@ export default function InterviewsPage() {
                   </div>
                   <span className="text-sm text-muted-foreground whitespace-nowrap">
                     {interview.turn_count} turns
+                    {(interview.llm_cost_usd ?? 0) > 0 && (
+                      <span title="Approximate LLM cost (chat only)"> · {formatCost(interview.llm_cost_usd)}</span>
+                    )}
                   </span>
                 </div>
                 {interview.status === 'pending' && (

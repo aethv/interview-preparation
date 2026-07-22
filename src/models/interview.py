@@ -1,7 +1,7 @@
 """Interview model."""
 
 from datetime import datetime
-from sqlalchemy import String, Text, DateTime, ForeignKey, JSON, Integer
+from sqlalchemy import String, Text, DateTime, ForeignKey, JSON, Integer, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -39,6 +39,19 @@ class Interview(Base):
     feedback: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     turn_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # LLM usage, accumulated per turn so a paused/left session still counts.
+    # cost is an estimate (chat only; excludes speech + embeddings).
+    llm_calls: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False)
+    llm_prompt_tokens: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False)
+    llm_cached_tokens: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False)
+    llm_completion_tokens: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False)
+    llm_cost_usd: Mapped[float] = mapped_column(
+        Numeric(12, 6), default=0, server_default="0", nullable=False)
 
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True)

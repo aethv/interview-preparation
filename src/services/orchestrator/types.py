@@ -201,6 +201,49 @@ class EnglishNextActionDecision(BaseModel):
                            description="Brief reasoning for this decision")
 
 
+class InterviewTurnDecision(BaseModel):
+    """One combined call: intent + routing + answer quality for interviews.
+
+    Replaces three sequential calls per turn (detect_intent, analyze_answer,
+    decide_next_action). The model reasons about all three at once, which is both
+    cheaper and more coherent than three independent passes — and the merged
+    system prompt crosses OpenAI's 1024-token prefix-cache threshold, so the
+    static instructions are billed at the cached rate.
+    """
+    intent_type: Literal[
+        "write_code", "review_code", "technical_assessment", "change_topic",
+        "clarify", "stop", "continue", "no_intent"
+    ] = Field(..., description="What the user is trying to accomplish")
+    intent_confidence: float = Field(..., ge=0.0, le=1.0)
+    intent_metadata: dict = Field(
+        default_factory=dict, description="Extra intent context (topic, language, ...)")
+    answer_quality: float = Field(
+        ..., ge=0.0, le=1.0,
+        description="Quality of the user's last answer; 0.0 if there was no prior question")
+    action: Literal[
+        "greeting", "question", "followup",
+        "sandbox_guidance", "code_review", "evaluation", "closing"
+    ] = Field(..., description="Next action to take")
+    reasoning: str = Field(..., description="Brief reasoning")
+
+
+class LanguageTurnDecision(BaseModel):
+    """Combined intent + routing for language practice.
+
+    No code actions (structurally excluded) and no answer_quality — a spoken
+    practice turn is not scored on interview signal.
+    """
+    intent_type: Literal[
+        "change_topic", "clarify", "stop", "continue", "no_intent"
+    ] = Field(..., description="What the learner is trying to accomplish")
+    intent_confidence: float = Field(..., ge=0.0, le=1.0)
+    intent_metadata: dict = Field(default_factory=dict)
+    action: Literal[
+        "greeting", "question", "followup", "evaluation", "closing"
+    ] = Field(..., description="Next action to take")
+    reasoning: str = Field(..., description="Brief reasoning")
+
+
 class QuestionGeneration(BaseModel):
     """Generated question with metadata."""
     question: str = Field(..., description="The question text")
