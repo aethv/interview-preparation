@@ -170,8 +170,29 @@ if not exist "frontend\node_modules\" (
 )
 
 REM ---------------------------------------------------------------
-REM  8. Open the browser and start the website
-REM     (npm keeps running in this window - that is normal)
+REM  8. First-time (or after an update): build the production site
+REM     "next build" writes .next\BUILD_ID only on success, so its
+REM     presence tells us a usable production build already exists.
+REM     To force a rebuild after code changes, delete frontend\.next
+REM ---------------------------------------------------------------
+if not exist "frontend\.next\BUILD_ID" (
+  echo  Building the website ^(first run - this can take a few minutes^)...
+  pushd frontend
+  call npm run build
+  if errorlevel 1 (
+    echo.
+    echo  Build failed. Please contact whoever gave you this app.
+    popd
+    pause
+    exit /b 1
+  )
+  popd
+  echo.
+)
+
+REM ---------------------------------------------------------------
+REM  9. Open the browser and serve the production build
+REM     (this keeps running in this window - that is normal)
 REM ---------------------------------------------------------------
 echo  Starting InterviewLab...
 echo  Your browser will open automatically at http://localhost:3005
@@ -183,7 +204,9 @@ echo.
 
 start "" http://localhost:3005
 pushd frontend
-call npm run dev
+REM  "npm start" (next start) has no port set, so pass 3005 explicitly
+REM  to match the browser URL and the frontend API config.
+call npx next start -p 3005
 popd
 
 pause

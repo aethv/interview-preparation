@@ -15,7 +15,8 @@ The first time:
   - Notepad opens so you can paste your API keys (OpenAI, ElevenLabs,
     LiveKit). Paste each key after the = sign, save (Ctrl+S), and close
   - The backend builds and starts inside Docker (can take several minutes)
-  - The website installs its parts (can take a few minutes)
+  - The website installs its parts, then builds for production
+    (can take a few minutes)
   - Your browser opens the app automatically
 
 Every time after that:
@@ -43,6 +44,9 @@ TIPS
 - Docker Desktop must be running BEFORE you start the app each time
 - Your keys are saved in the ".env" file in the main project folder;
   you only enter them once
+- The website runs as a production build. It builds once on first run;
+  after updating the code, delete the "frontend\.next" folder to force
+  a fresh build on the next start
 
 NEED HELP?
 ----------
