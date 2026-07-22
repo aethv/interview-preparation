@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
@@ -27,6 +27,7 @@ import Link from 'next/link';
 import { CodeSandbox } from '@/components/interview/sandbox';
 import { EnglishSessionPanel } from '@/components/interview/english-session-panel';
 import { ConversationHistory } from '@/components/interview/conversation-history';
+import { VerticalSplitPanels } from '@/components/ui/vertical-split-panels';
 import { SessionTypeBadge } from '@/components/interview/session-type-badge';
 import { formatCost } from '@/lib/format-cost';
 import { MicLevelMeter } from '@/components/interview/mic-level-meter';
@@ -65,10 +66,14 @@ export default function InterviewDetailPage() {
   const [voiceToken, setVoiceToken] = useState<{ token: string; url: string } | null>(null);
   const [showVoiceVideo, setShowVoiceVideo] = useState(false);
   const [agentReady, setAgentReady] = useState(false);
+  const [hasLocalVideo, setHasLocalVideo] = useState(false);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const startSession = useSessionStore((st) => st.startSession);
   const endSession = useSessionStore((st) => st.endSession);
+  const handleHasVideoChange = useCallback((hasVideo: boolean) => {
+    setHasLocalVideo(hasVideo);
+  }, []);
 
   // Use the custom LiveKit hook - handles all connection lifecycle
   const {
@@ -708,18 +713,27 @@ export default function InterviewDetailPage() {
               
               {canRespond && showVoiceVideo && voiceToken ? (
             <>
-              {/* Top Row: Participant Video | Interviewer Avatar side by side.
-                  flex-none + overflow-hidden keeps the tiles inside their 16rem
-                  band instead of overlapping the transcript underneath. */}
-              <div className="flex-none h-64 p-4 grid grid-cols-2 gap-4 overflow-hidden">
-                {/* Left Column: Participant Video */}
-                <ParticipantVideo 
-                  room={roomInstance} 
-                  userName={user?.full_name || 'You'}
-                />
-                
-                {/* Right Column: Interviewer Avatar with Waves */}
-                <AvatarWithWaves room={roomInstance} />
+              {/* Top Row: Participant Video | Interviewer Avatar.
+                  When the local camera is off, collapse the self-view to a
+                  compact strip so the interviewer tile (and transcript below)
+                  get the vertical space. */}
+              <div
+                className={
+                  hasLocalVideo
+                    ? 'flex-none h-64 p-4 grid grid-cols-2 gap-4 overflow-hidden'
+                    : 'flex-none h-36 p-4 flex gap-4 overflow-hidden'
+                }
+              >
+                <div className={hasLocalVideo ? 'min-h-0 min-w-0' : 'w-44 shrink-0'}>
+                  <ParticipantVideo
+                    room={roomInstance}
+                    userName={user?.full_name || 'You'}
+                    onHasVideoChange={handleHasVideoChange}
+                  />
+                </div>
+                <div className={hasLocalVideo ? 'min-h-0 min-w-0' : 'flex-1 min-w-0 min-h-0'}>
+                  <AvatarWithWaves room={roomInstance} />
+                </div>
               </div>
               
               {/* Room Controls (Mute/Video) - Only show when connected */}
@@ -730,19 +744,30 @@ export default function InterviewDetailPage() {
                 </div>
               )}
               
-              {/* Bottom: stored transcript (survives rejoin) + live captions */}
-              <div className="flex-1 min-h-0 p-4 pt-0 flex flex-col gap-3">
-                <div className="flex-1 min-h-0">
-                  <ConversationHistory
-                    messages={interview.conversation_history}
-                    agentLabel={agentLabel}
-                    autoScroll
-                    emptyText="The conversation will appear here as you talk."
-                  />
-                </div>
-                <div className="flex-none max-h-40 overflow-y-auto">
-                  <TranscriptionDisplay room={roomInstance} agentLabel={agentLabel} />
-                </div>
+              {/* Bottom: stored transcript (survives rejoin) + live captions.
+                  Drag the handle to resize; header buttons minimize/maximize. */}
+              <div className="flex-1 min-h-0 p-4 pt-0">
+                <VerticalSplitPanels
+                  defaultTopPercent={70}
+                  top={({ actions, collapsed }) => (
+                    <ConversationHistory
+                      messages={interview.conversation_history}
+                      agentLabel={agentLabel}
+                      autoScroll
+                      emptyText="The conversation will appear here as you talk."
+                      headerActions={actions}
+                      collapsed={collapsed}
+                    />
+                  )}
+                  bottom={({ actions, collapsed }) => (
+                    <TranscriptionDisplay
+                      room={roomInstance}
+                      agentLabel={agentLabel}
+                      headerActions={actions}
+                      collapsed={collapsed}
+                    />
+                  )}
+                />
               </div>
             </>
           ) : (

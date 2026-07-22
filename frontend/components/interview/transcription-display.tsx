@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, type ReactNode } from 'react';
 import { Room, RoomEvent, TranscriptionSegment, ParticipantEvent } from 'livekit-client';
 import { Card, CardContent } from '@/components/ui/card';
 import { User, UserCheck } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 // Internal marker for "this message came from the agent"; the visible label is a prop.
 const AGENT_SPEAKER = 'Interviewer';
@@ -12,6 +13,10 @@ interface TranscriptionDisplayProps {
   room: Room | null;
   /** Label for the AI speaker. "Interviewer" is wrong in a practice session. */
   agentLabel?: string;
+  /** Extra controls rendered in the header (e.g. minimize/maximize). */
+  headerActions?: ReactNode;
+  /** When true, only the header row is shown. */
+  collapsed?: boolean;
 }
 
 interface TranscriptionMessage {
@@ -22,7 +27,12 @@ interface TranscriptionMessage {
   isFinal: boolean;
 }
 
-export function TranscriptionDisplay({ room, agentLabel = 'Interviewer' }: TranscriptionDisplayProps) {
+export function TranscriptionDisplay({
+  room,
+  agentLabel = 'Interviewer',
+  headerActions,
+  collapsed = false,
+}: TranscriptionDisplayProps) {
   const [messages, setMessages] = useState<TranscriptionMessage[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -135,70 +145,85 @@ export function TranscriptionDisplay({ room, agentLabel = 'Interviewer' }: Trans
   }, [messages]);
 
   return (
-    <Card className="h-full flex flex-col">
-      <CardContent className="flex-1 p-4 flex flex-col min-h-0">
-        <h3 className="text-sm font-semibold mb-3">Conversation</h3>
-        <div className="flex-1 overflow-y-auto space-y-2 pr-4" ref={scrollAreaRef}>
-          {messages.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Waiting for conversation to start...
-            </p>
-          ) : (
-            messages.map((message) => {
-              const isInterviewer = message.speaker === AGENT_SPEAKER ||
-                                   message.speaker.toLowerCase().includes('interviewer') ||
-                                   message.speaker.toLowerCase().includes('agent') ||
-                                   message.speaker.toLowerCase().includes('ai');
-              const isUser = message.speaker === room?.localParticipant?.name || 
-                           message.speaker === room?.localParticipant?.identity;
-              
-              const displayName = isUser ? 'You' : (isInterviewer ? agentLabel : message.speaker);
-              
-              return (
-                <div
-                  key={message.id}
-                  className={`flex items-start gap-2 p-2 rounded-lg ${
-                    isInterviewer 
-                      ? 'bg-primary/5 border-l-2 border-primary' 
-                      : isUser
-                      ? 'bg-muted/50 border-l-2 border-muted-foreground'
-                      : 'bg-background'
-                  } ${!message.isFinal ? 'opacity-60' : ''}`}
-                >
-                  <div className={`flex-shrink-0 mt-0.5 ${
-                    isInterviewer ? 'text-primary' : 'text-muted-foreground'
-                  }`}>
-                    {isInterviewer ? (
-                      <UserCheck className="h-4 w-4" />
-                    ) : (
-                      <User className="h-4 w-4" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`font-semibold text-xs ${
-                        isInterviewer ? 'text-primary' : 'text-foreground'
-                      }`}>
-                        {displayName}
-                      </span>
-                      {!message.isFinal && (
-                        <span className="text-xs text-muted-foreground italic">(typing...)</span>
-                      )}
-                    </div>
-                    <p className={`text-sm ${
-                      isInterviewer ? 'text-foreground' : 'text-foreground'
-                    } ${!message.isFinal ? 'italic' : ''}`}>
-                      {message.text}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {message.timestamp.toLocaleTimeString()}
-                    </p>
-                  </div>
-                </div>
-              );
-            })
+    <Card className={cn('h-full flex flex-col', collapsed && 'py-0')}>
+      <CardContent
+        className={cn(
+          'flex-1 p-4 flex flex-col min-h-0',
+          collapsed && 'py-2.5 justify-center',
+        )}
+      >
+        <div
+          className={cn(
+            'flex items-center justify-between gap-2 shrink-0',
+            !collapsed && 'mb-3',
+          )}
+        >
+          <h3 className="text-sm font-semibold truncate">Conversation</h3>
+          {headerActions && (
+            <div className="flex items-center gap-1 shrink-0">{headerActions}</div>
           )}
         </div>
+        {!collapsed && (
+          <div className="flex-1 overflow-y-auto space-y-2 pr-4" ref={scrollAreaRef}>
+            {messages.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Waiting for conversation to start...
+              </p>
+            ) : (
+              messages.map((message) => {
+                const isInterviewer = message.speaker === AGENT_SPEAKER ||
+                                     message.speaker.toLowerCase().includes('interviewer') ||
+                                     message.speaker.toLowerCase().includes('agent') ||
+                                     message.speaker.toLowerCase().includes('ai');
+                const isUser = message.speaker === room?.localParticipant?.name ||
+                             message.speaker === room?.localParticipant?.identity;
+
+                const displayName = isUser ? 'You' : (isInterviewer ? agentLabel : message.speaker);
+
+                return (
+                  <div
+                    key={message.id}
+                    className={`flex items-start gap-2 p-2 rounded-lg ${
+                      isInterviewer
+                        ? 'bg-primary/5 border-l-2 border-primary'
+                        : isUser
+                        ? 'bg-muted/50 border-l-2 border-muted-foreground'
+                        : 'bg-background'
+                    } ${!message.isFinal ? 'opacity-60' : ''}`}
+                  >
+                    <div className={`flex-shrink-0 mt-0.5 ${
+                      isInterviewer ? 'text-primary' : 'text-muted-foreground'
+                    }`}>
+                      {isInterviewer ? (
+                        <UserCheck className="h-4 w-4" />
+                      ) : (
+                        <User className="h-4 w-4" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`font-semibold text-xs ${
+                          isInterviewer ? 'text-primary' : 'text-foreground'
+                        }`}>
+                          {displayName}
+                        </span>
+                        {!message.isFinal && (
+                          <span className="text-xs text-muted-foreground italic">(typing...)</span>
+                        )}
+                      </div>
+                      <p className={`text-sm text-foreground ${!message.isFinal ? 'italic' : ''}`}>
+                        {message.text}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {message.timestamp.toLocaleTimeString()}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

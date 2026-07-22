@@ -28,7 +28,15 @@ class LLMHelper:
     @property
     def instructor_client(self):
         if self._instructor_client is None:
-            self._instructor_client = instructor.patch(self.client)
+            # Mode.JSON instead of the default Mode.TOOLS: TOOLS forces a
+            # tool_choice on the request, which some reasoning-tier models
+            # (e.g. gpt-5.6-luna, configurable as model_conversation) reject,
+            # making every structured call fail and fall back to canned
+            # replies. JSON mode requests a JSON completion instead — the
+            # same plain-completion path already proven to work on the
+            # configured models.
+            self._instructor_client = instructor.patch(
+                self.client, mode=instructor.Mode.JSON)
         return self._instructor_client
 
     async def call_llm(

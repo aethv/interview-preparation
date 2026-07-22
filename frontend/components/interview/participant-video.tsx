@@ -5,19 +5,34 @@ import { Room, RoomEvent, Track } from 'livekit-client';
 import { Card, CardContent } from '@/components/ui/card';
 import { VideoOff } from 'lucide-react';
 import { MicLevelMeter } from './mic-level-meter';
+import { cn } from '@/lib/utils';
 
 interface ParticipantVideoProps {
   room: Room | null;
   userName?: string;
+  /** Notifies the parent so the video row can shrink when the camera is off. */
+  onHasVideoChange?: (hasVideo: boolean) => void;
 }
 
-export function ParticipantVideo({ room, userName = 'You' }: ParticipantVideoProps) {
+export function ParticipantVideo({
+  room,
+  userName = 'You',
+  onHasVideoChange,
+}: ParticipantVideoProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const [hasVideo, setHasVideo] = useState(false);
 
   useEffect(() => {
+    onHasVideoChange?.(hasVideo);
+  }, [hasVideo, onHasVideoChange]);
+
+  useEffect(() => {
     // Only run when room is connected and video element exists
-    if (!room || room.state !== 'connected' || !localVideoRef.current) return;
+    if (!room || room.state !== 'connected') {
+      setHasVideo(false);
+      return;
+    }
+    if (!localVideoRef.current) return;
 
     // Idempotent attachment function - handles both event-based and reconciliation cases
     const attachIfExists = () => {
@@ -87,34 +102,53 @@ export function ParticipantVideo({ room, userName = 'You' }: ParticipantVideoPro
   return (
     // min-h-0 + overflow-hidden: without them the <video> falls back to its
     // intrinsic size and spills over the transcript below.
-    <Card className="h-full w-full min-h-0 overflow-hidden">
-      <CardContent className="h-full p-0 relative bg-black rounded-lg overflow-hidden">
+    <Card
+      className={cn(
+        'h-full w-full min-h-0 overflow-hidden',
+        !hasVideo && 'py-0',
+      )}
+    >
+      <CardContent
+        className={cn(
+          'h-full p-0 relative overflow-hidden',
+          hasVideo ? 'bg-black rounded-lg' : 'bg-muted/60',
+        )}
+      >
         {/* Always render video element - track attachment happens regardless */}
         <video
           ref={localVideoRef}
           autoPlay
           playsInline
           muted
-          className="w-full h-full object-cover"
+          className={cn(
+            'w-full h-full object-cover',
+            !hasVideo && 'invisible absolute inset-0',
+          )}
         />
-        {/* Show overlay when no video track is available */}
-        {!hasVideo && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-muted/80 pointer-events-none">
-            <VideoOff className="h-6 w-6 text-muted-foreground" />
-            <p className="text-muted-foreground text-sm">Camera off</p>
-            <p className="text-muted-foreground text-xs">Audio only — turn the camera on below if you want it</p>
+
+        {hasVideo ? (
+          <div className="absolute bottom-2 left-2 right-2 flex items-center gap-2 bg-black/60 text-white px-2 py-1 rounded z-10">
+            <span className="text-xs truncate">{userName}</span>
+            <div className="ml-auto">
+              <MicLevelMeter room={room} compact />
+            </div>
+          </div>
+        ) : (
+          // Compact camera-off strip: name + mic + short status, no empty tile.
+          <div className="h-full flex flex-col justify-center gap-1.5 px-3 py-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <VideoOff className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="text-xs font-medium truncate">{userName}</span>
+              <div className="ml-auto shrink-0">
+                <MicLevelMeter room={room} compact />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-tight">
+              Camera off · audio only
+            </p>
           </div>
         )}
-        {/* Name + live mic level, so an unheard user can tell whether their
-            audio is actually reaching the room */}
-        <div className="absolute bottom-2 left-2 right-2 flex items-center gap-2 bg-black/60 text-white px-2 py-1 rounded z-10">
-          <span className="text-xs truncate">{userName}</span>
-          <div className="ml-auto">
-            <MicLevelMeter room={room} compact />
-          </div>
-        </div>
       </CardContent>
     </Card>
   );
 }
-
